@@ -62,9 +62,9 @@ No backend, auth, cloud synchronization, lender economy, real player ghosts, soc
 
 ## GitHub Pages
 
-The workflow tests, typechecks, runs Chromium browser checks, builds, and deploys pushes to `main`. Pull requests run verification without deployment. Vite's base is `/DungeonDelver/`.
+The workflow tests, typechecks, runs Chromium browser checks, and builds pushes to `main` and pull requests. Standalone project Pages deployment is opt-in via the repository variable `ENABLE_PROJECT_PAGES=true`; the active `/DungeonDelve/` release is published through the domain repository. Vite's base is `/DungeonDelver/`.
 
-Enable **Settings → Pages → Build and deployment → Source: GitHub Actions** in `BattyDev/DungeonDelver`, then push `main` (or run the workflow manually). The connected GitHub identity needs write access to Contents and Workflows; configuring Pages also requires Pages permissions.
+Enable **Settings → Pages → Build and deployment → Source: GitHub Actions** in `BattyDev/DungeonDelver`, set the repository Actions variable `ENABLE_PROJECT_PAGES` to `true`, then push `main` (or run the workflow manually). The connected GitHub identity needs write access to Contents and Workflows; configuring Pages also requires Pages permissions.
 
 For `https://battydev.com/DungeonDelver/`, `battydev.com` should already be the custom domain of the account's root Pages site (`BattyDev/battydev.github.io`). Project sites inherit that domain. Do not set the project site's CNAME to the account root domain: this is a subpath deployment. If the root domain is hosted elsewhere, its server must route `/DungeonDelver/` to this build; a Pages project alone cannot configure another host.
 

@@ -29,7 +29,9 @@ jobs:
         with:
           path: apps/client/dist
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # The active /DungeonDelve/ release is deployed by the domain repository.
+    # Enable this separate project site only after configuring its Pages settings.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ENABLE_PROJECT_PAGES == 'true'
     needs: verify
     runs-on: ubuntu-latest
     permissions:
