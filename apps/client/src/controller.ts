@@ -13,7 +13,7 @@ import {
   isSolved,
   activeFighter,
   distance,
-  canWalk,
+  canOccupy,
 } from '@delver/rules';
 import type { GameState, GameCommand, ClassId, Point, Ghost, Fighter, Action } from '@delver/rules';
 import { World } from './scene/world';
@@ -38,7 +38,9 @@ export class Controller {
   private path: Point[] = [];
   private modal?: HTMLElement;
   private toastTimer = 0;
-  private lastMove = 0;
+  private lastFrame = 0;
+  private motionTime = 0;
+  private lastMap = 0;
   private lastTick = 0;
   private lastAI = 0;
   private sneak = false;
@@ -61,11 +63,6 @@ export class Controller {
     this.keyboard = new Keyboard(
       () => this.interact(),
       () => this.closeModal(),
-      (dx, dz) => {
-        this.path = [];
-        this.move(dx, dz);
-        this.lastMove = performance.now();
-      },
     );
     root.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
@@ -112,7 +109,10 @@ export class Controller {
     if (!lightweight || previous.phase !== this.state.phase) this.render();
     else {
       this.updateWorld();
-      if (command.type === 'move') this.renderLeft();
+      if (command.type === 'move' && performance.now() - this.lastMap > 150) {
+        this.renderLeft();
+        this.lastMap = performance.now();
+      }
       this.renderInteraction();
     }
   }
@@ -187,7 +187,7 @@ export class Controller {
     const s = this.state;
     if (s.phase !== 'floor' && s.phase !== 'combat') return '';
     const def = getFloor(s.floor.id);
-    return `<div class="mini-map" aria-label="Floor map" style="grid-template-columns:repeat(21,1fr)">${def.map.map((row, z) => [...row].map((t, x) => `<i class="${s.floor.position.x === x && s.floor.position.z === z ? 'player' : def.stairs.x === x && def.stairs.z === z ? 'goal' : def.clue.x === x && def.clue.z === z ? 'clue' : s.floor.patrols.some((p) => !p.defeated && Math.round(p.position.x) === x && Math.round(p.position.z) === z) ? 'foe' : t === '#' ? 'wall' : ''}"></i>`).join('')).join('')}</div>`;
+    return `<div class="mini-map" aria-label="Floor map" style="grid-template-columns:repeat(21,1fr)">${def.map.map((row, z) => [...row].map((t, x) => `<i class="${Math.round(s.floor.position.x) === x && Math.round(s.floor.position.z) === z ? 'player' : def.stairs.x === x && def.stairs.z === z ? 'goal' : def.clue.x === x && def.clue.z === z ? 'clue' : s.floor.patrols.some((p) => !p.defeated && Math.round(p.position.x) === x && Math.round(p.position.z) === z) ? 'foe' : t === '#' ? 'wall' : ''}"></i>`).join('')).join('')}</div>`;
   }
   private puzzleDescription() {
     const s = this.state;
@@ -242,8 +242,6 @@ export class Controller {
         e.preventDefault();
         const [dx, dz] = button.dataset.dir!.split(',').map(Number);
         this.path = [];
-        this.move(dx, dz);
-        this.lastMove = performance.now();
         this.keyboard.held.add(dx === 1 ? 'd' : dx === -1 ? 'a' : dz === 1 ? 's' : 'w');
         button.setPointerCapture(e.pointerId);
       });
@@ -383,7 +381,9 @@ export class Controller {
     if (!this.path.length && this.state.phase === 'floor') {
       const def = getFloor(this.state.floor.id);
       if (
-        [def.clue, def.stairs, ...def.puzzlePoints].some((p) => p.x === goal.x && p.z === goal.z) &&
+        [def.clue, def.stairs, ...def.puzzlePoints].some(
+          (p) => p.x === Math.round(goal.x) && p.z === Math.round(goal.z),
+        ) &&
         distance(this.state.floor.position, goal) <= 1.5
       )
         this.interact();
@@ -392,14 +392,17 @@ export class Controller {
   private findPath(goal: Point): Point[] {
     const s = this.state;
     if (s.phase === 'classSelect' || s.phase === 'combat') return [];
-    const start = s.phase === 'floor' ? s.floor.position : this.hubPosition;
+    const position = s.phase === 'floor' ? s.floor.position : this.hubPosition;
+    const start = { x: Math.round(position.x), z: Math.round(position.z) };
+    const destination = goal;
+    goal = { x: Math.round(goal.x), z: Math.round(goal.z) };
     const def = s.phase === 'floor' ? getFloor(s.floor.id) : undefined;
     const pass = (p: Point) =>
       p.x >= 1 &&
       p.x <= 19 &&
       p.z >= 1 &&
       p.z <= 11 &&
-      (def && s.phase === 'floor' ? canWalk(def, s.floor, p) : true);
+      (def && s.phase === 'floor' ? canOccupy(def, s.floor, p) : true);
     const interactable =
       def &&
       ((def.stairs.x === goal.x && def.stairs.z === goal.z) ||
@@ -436,7 +439,27 @@ export class Controller {
       path.unshift(end);
       end = previous.get(key(end));
     }
-    return path;
+    if (distance(position, start) > 0.001) path.unshift(start);
+    if (pass(goal) && pass(destination)) path.push(destination);
+    // Pull a route taut across open space, retaining clearance at corridor corners.
+    const clear = (a: Point, b: Point) => {
+      const steps = Math.ceil(distance(a, b) / 0.1);
+      for (let i = 1; i <= steps; i++) {
+        const p = { x: a.x + ((b.x - a.x) * i) / steps, z: a.z + ((b.z - a.z) * i) / steps };
+        if (!pass(p) || (def && s.phase === 'floor' && !canOccupy(def, s.floor, p))) return false;
+      }
+      return true;
+    };
+    const smooth: Point[] = [];
+    let from = position;
+    for (let i = 0; i < path.length; ) {
+      let farthest = i;
+      for (let j = i; j < path.length; j++) if (clear(from, path[j])) farthest = j;
+      smooth.push(path[farthest]);
+      from = path[farthest];
+      i = farthest + 1;
+    }
+    return smooth;
   }
   private move(dx: number, dz: number) {
     if (this.modal || this.state.phase === 'combat' || this.state.phase === 'classSelect') return;
@@ -445,8 +468,12 @@ export class Controller {
       return;
     }
     const p = { x: this.hubPosition.x + dx, z: this.hubPosition.z + dz };
-    if (p.x >= 1 && p.x <= 19 && p.z >= 1 && p.z <= 11) {
-      this.hubPosition = p;
+    const next = {
+      x: Math.max(0.75, Math.min(19.25, p.x)),
+      z: Math.max(0.75, Math.min(11.25, p.z)),
+    };
+    if (distance(next, this.hubPosition) > 0) {
+      this.hubPosition = next;
       this.updateWorld();
       this.renderInteraction();
     }
@@ -456,21 +483,31 @@ export class Controller {
   }
   private frame(ms: number) {
     this.time = ms / 1000;
-    this.world?.animate(this.time);
+    const delta = this.lastFrame ? Math.min((ms - this.lastFrame) / 1000, 0.05) : 0;
+    this.lastFrame = ms;
     if (!this.paused && !this.modal) {
-      if (ms - this.lastMove > (this.isSneaking() ? 270 : 150)) {
+      this.motionTime += delta;
+      while (this.motionTime >= 1 / 60) {
+        this.motionTime -= 1 / 60;
+        const step = (this.isSneaking() ? 2.5 : 4.5) / 60;
         const direction = this.keyboard.direction();
         if (direction) {
           this.path = [];
-          this.move(...direction);
-          this.lastMove = ms;
+          this.move(direction[0] * step, direction[1] * step);
         } else if (this.path.length) {
           const current =
             this.state.phase === 'floor' ? this.state.floor.position : this.hubPosition;
-          const next = this.path.shift()!;
-          this.move(next.x - current.x, next.z - current.z);
-          this.lastMove = ms;
-          if (!this.path.length) this.interact();
+          const next = this.path[0];
+          const remaining = distance(current, next);
+          if (remaining > 0.001) {
+            const amount = Math.min(step, remaining) / remaining;
+            this.move((next.x - current.x) * amount, (next.z - current.z) * amount);
+          }
+          const after = this.state.phase === 'floor' ? this.state.floor.position : this.hubPosition;
+          if (distance(after, next) < 0.001) {
+            this.path.shift();
+            if (!this.path.length) this.interact();
+          } else if (distance(current, after) < 0.00001) this.path = [];
         }
       }
       if (this.state.phase === 'floor' && ms - this.lastTick >= 100) {
@@ -485,7 +522,8 @@ export class Controller {
         this.dispatch({ type: 'aiTurn' });
         this.lastAI = ms;
       }
-    }
+    } else this.motionTime = 0;
+    this.world?.animate(this.time);
     requestAnimationFrame((t) => this.frame(t));
   }
   private openModal(html: string) {

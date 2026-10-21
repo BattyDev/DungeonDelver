@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: 'tests/browser',
   fullyParallel: true,
+  // Each check renders a Three.js world; avoid competing software WebGL contexts locally.
+  workers: process.env.CI ? undefined : 1,
   use: {
     baseURL: 'http://127.0.0.1:5173/DungeonDelver/',
     headless: true,

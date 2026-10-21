@@ -57,16 +57,22 @@ test('keyboard pushes blocks and the floor persists', async ({ page }) => {
     floor = run.floors[1];
   floor.position = { x: 4, z: 5 };
   floor.patrols.forEach((p) => (p.pauseTicks = 9999));
+  await page.clock.install();
   await fixture(page, { phase: 'floor', progress, run, floor });
-  await page.keyboard.press('ArrowUp');
-  await page.waitForTimeout(180);
-  await page.keyboard.press('ArrowUp');
-  await expect.poll(async () => (await saved(page)).floor.puzzle.blocks[0].z).toBe(2);
-  for (const key of ['ArrowRight', 'ArrowDown', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowUp']) {
-    await page.keyboard.press(key);
-    await page.waitForTimeout(180);
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  for (const [key, duration] of [
+    ['ArrowUp', 450],
+    ['ArrowRight', 225],
+    ['ArrowDown', 450],
+    ['ArrowRight', 225],
+    ['ArrowUp', 450],
+  ] as const) {
+    await page.keyboard.down(key);
+    await page.clock.runFor(duration);
+    await page.keyboard.up(key);
   }
-  await expect.poll(async () => (await saved(page)).floor.puzzle.blocks[1].z).toBe(2);
+  await page.clock.runFor(1000);
+  expect((await saved(page)).floor.puzzle.blocks.map((b: { z: number }) => b.z)).toEqual([2, 2]);
   await page.reload();
   await expect(page.locator('#left')).toContainText('The seal is broken');
 });
@@ -88,6 +94,35 @@ test('Mend can explicitly target a selected ally', async ({ page }) => {
       return s.combat.decisions[0]?.action.target;
     })
     .toBe('ghost-0');
+});
+
+test('walking is continuous, diagonal speed is normalized, and fractional position reloads', async ({
+  page,
+}) => {
+  const progress = newProgress('Walker', 'rogue', 42);
+  const run = startRun(progress),
+    floor = run.floors[1];
+  floor.patrols.forEach((p) => (p.pauseTicks = 9999));
+  await page.clock.install();
+  await fixture(page, { phase: 'floor', progress, run, floor });
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  await page.keyboard.down('d');
+  await page.keyboard.down('w');
+  await page.clock.runFor(200);
+  await page.keyboard.up('d');
+  await page.keyboard.up('w');
+  await page.clock.runFor(1000);
+  const position = (await saved(page)).floor.position;
+  const dx = position.x - 2,
+    dz = 10 - position.z;
+  expect(dx).toBeGreaterThan(0.3);
+  expect(dx).toBeLessThan(0.8);
+  expect(dx).toBeCloseTo(dz, 1);
+  expect(Math.hypot(dx, dz)).toBeLessThan(1.1);
+  expect(Number.isInteger(position.x)).toBe(false);
+  await page.reload();
+  expect((await saved(page)).floor.position).toEqual(position);
+  await expect(page.locator('#stage canvas')).toBeVisible();
 });
 test('sanctuary portal round trip and corrupt-save preservation', async ({ page }) => {
   const progress = newProgress('P', 'rogue', 2);

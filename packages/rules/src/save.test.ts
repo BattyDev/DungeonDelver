@@ -20,3 +20,19 @@ it('rejects malformed, future, and structurally invalid saves', () => {
   state.progress.player.loadout.weapon = 'oak-staff';
   expect(() => parseSave(serializeSave(state))).toThrow();
 });
+it('loads existing tile positions and preserves fractional walking positions exactly', () => {
+  let state = transition(
+    transition(
+      { phase: 'classSelect' },
+      { type: 'newGame', name: 'P', classId: 'rogue', seed: 42 },
+    ),
+    { type: 'startRun' },
+  );
+  expect(parseSave(serializeSave(state)).state).toEqual(state);
+  state = transition(state, { type: 'move', dx: 0.06, dz: -0.08 });
+  expect(parseSave(serializeSave(state)).state).toEqual(state);
+  if (state.phase !== 'floor') throw Error();
+  expect(state.floor.position).toEqual({ x: 2.06, z: 9.92 });
+  state.floor.position = { x: 9.1, z: 1.2 };
+  expect(() => parseSave(serializeSave(state))).toThrow();
+});

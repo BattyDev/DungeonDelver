@@ -195,8 +195,7 @@ function floor(x: unknown): boolean {
     return false;
   const def = getFloor(x.id),
     position = x.position as { x: number; z: number };
-  if (!Number.isInteger(position.x) || !Number.isInteger(position.z) || !walkable(def, position))
-    return false;
+  if (!walkable(def, { x: Math.round(position.x), z: Math.round(position.z) })) return false;
   return (
     array(
       x.patrols,

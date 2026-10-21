@@ -7,8 +7,7 @@ import { createEnemy } from './content/enemies';
 import { activeFighter, resolveTurn, startCombat } from './combat';
 import { chooseAction } from './ai';
 import { endRun, newProgress, startRun, syncParty } from './progression';
-import { canWalk, createFloor, distance, encounterAt, tickPatrols } from './floors/exploration';
-import { pushBlock, samePoint } from './floors/pressure-plates';
+import { createFloor, distance, encounterAt, moveOnFloor, tickPatrols } from './floors/exploration';
 import { pullLever } from './floors/lever-order';
 import { toggleBrazier } from './floors/braziers';
 import { keyHunt } from './floors/key-hunt';
@@ -185,16 +184,9 @@ export function transition(state: GameState, command: GameCommand): GameState {
   }
   if (command.type === 'move') {
     const { dx, dz } = command;
-    if (!Number.isInteger(dx) || !Number.isInteger(dz) || Math.abs(dx) + Math.abs(dz) !== 1)
-      return state;
-    const dest = { x: s.floor.position.x + dx, z: s.floor.position.z + dz };
-    if (s.floor.puzzle.type === 'plates') {
-      const index = s.floor.puzzle.blocks.findIndex((p) => samePoint(p, dest));
-      if (index >= 0)
-        s.floor.puzzle = pushBlock(s.floor.puzzle, def, s.floor.position, index, dx, dz);
-    }
-    if (!canWalk(def, s.floor, dest)) return state;
-    s.floor.position = dest;
+    const floor = moveOnFloor(def, s.floor, dx, dz);
+    if (floor === s.floor) return state;
+    s.floor = floor;
     s.run.floors[s.floor.id] = s.floor;
     return encounter(s, !!command.sneak);
   }
