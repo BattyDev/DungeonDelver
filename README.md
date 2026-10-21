@@ -31,6 +31,7 @@ For a system Chromium, use `CHROMIUM_PATH=/usr/bin/chromium pnpm test:browser`. 
 - E/Enter: nearby interaction. Tap an NPC or use Companions to inspect and hire.
 - Shift: sneak; detection rings show the unsneaking detection range. Shadow Cloak reduces it by 40%; sneaking reduces it further.
 - In combat, select an enemy for attacks or an ally for Mend/potions. Only the player is controlled directly. Ghosts and enemies act automatically in speed order.
+- You can choose an action during another character's turn to queue it. Change the action or target to replace it, or use Cancel. It executes once on your next turn; invalid targets or unavailable resources cancel it without spending your turn. Queues clear when combat ends or the page reloads.
 - Read the pale-blue rune tablets for puzzle clues. The Journal holds discovered clues and a stone reset option.
 - Gear/class changes and hires are hub-only. A tank, healer and two damage dealers are recommended.
 - The settings menu pauses the expedition and contains Reset Game with confirmation.

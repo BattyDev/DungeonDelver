@@ -84,6 +84,8 @@ Choose one history approach. The handoff commit is included in the bundle; the s
 
 ### Local playtest feedback, October 21
 
+The local feedback pass implements continuous walking, normalized diagonal speed, wall sliding, smoother click routes, a much lower camera with stable follow, and a replaceable/cancelable combat action queue. Existing version 1 saves remain compatible; fractional walking positions persist. Verification: 40 unit tests, 8 Chromium checks, strict typechecking and production build. Local browser checks use one worker for software WebGL stability. These changes are local; the published game remains the previously verified deployment until a new domain PR is released.
+
 - Replace tile-step walking with continuous movement and smooth diagonal input. The camera should stay much lower, near the characters, so rooms feel larger, and should not jerk at room edges.
 - Allow combat actions to be queued before the player's turn, with a way to change or cancel them.
 - Puzzles feel good enough. Keep their mechanics intact.

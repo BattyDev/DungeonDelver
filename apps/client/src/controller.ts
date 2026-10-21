@@ -45,6 +45,7 @@ export class Controller {
   private lastAI = 0;
   private sneak = false;
   private selectedTarget = '';
+  private queuedAction?: Action;
   private shell = false;
   private time = 0;
   private paused = false;
@@ -92,6 +93,7 @@ export class Controller {
     }
     if (previous.phase === 'combat' && this.state.phase !== 'combat') {
       this.selectedTarget = '';
+      this.queuedAction = undefined;
       this.path = [];
       if (this.state.phase === 'hub' || this.state.phase === 'safeRoom')
         this.toast('Party wiped. XP kept; unbanked gold lost. Your hires have returned home.');
@@ -522,6 +524,21 @@ export class Controller {
         this.dispatch({ type: 'aiTurn' });
         this.lastAI = ms;
       }
+      if (
+        this.state.phase === 'combat' &&
+        activeFighter(this.state.combat).player &&
+        this.queuedAction
+      ) {
+        const action = this.queuedAction;
+        this.queuedAction = undefined;
+        const previous = this.state;
+        this.dispatch({ type: 'combat', action });
+        this.lastAI = ms;
+        if (this.state === previous) {
+          this.renderCombat();
+          this.toast('Queued action is no longer available. Choose another action.');
+        }
+      }
     } else this.motionTime = 0;
     this.world?.animate(this.time);
     requestAnimationFrame((t) => this.frame(t));
@@ -657,6 +674,29 @@ export class Controller {
     const c = s.combat,
       actor = activeFighter(c),
       isPlayer = actor.player;
+    const player = c.fighters.find((f) => f.player)!;
+    const button = (
+      type: 'attack' | 'skill' | 'potion' | 'defend' | 'flee',
+      label: string,
+      disabled = false,
+    ) => {
+      const queued = this.queuedAction?.type === (type === 'potion' ? 'item' : type);
+      return `<button class="${type === 'attack' ? 'primary' : ''} ${queued ? 'queued' : ''}" data-action="${type}" aria-pressed="${queued}" ${player.hp <= 0 || disabled ? 'disabled' : ''}>${label}</button>`;
+    };
+    const queued = this.queuedAction;
+    const queuedName =
+      queued?.type === 'skill'
+        ? CLASSES[player.classId].skill
+        : queued?.type === 'item'
+          ? 'Potion'
+          : queued
+            ? queued.type[0].toUpperCase() + queued.type.slice(1)
+            : '';
+    const queuedTarget =
+      queued && 'target' in queued
+        ? c.fighters.find((f) => f.id === queued.target)?.name
+        : undefined;
+    const queueHtml = `<div class="combat-queue" role="status">${queued ? `<span>Queued: <strong>${esc(queuedName)}${queuedTarget ? ` → ${esc(queuedTarget)}` : ''}</strong></span><button data-action="cancel-queue" aria-label="Cancel queued action">${icon('close', 12)} Cancel</button>` : `<span>${isPlayer ? 'Choose a target, then an action.' : 'Choose your next action now. It will fire on your turn.'}</span>`}</div>`;
     const enemies = c.fighters.filter((f) => f.team === 'enemy' && f.hp > 0);
     if (!c.fighters.some((f) => f.hp > 0 && f.id === this.selectedTarget))
       this.selectedTarget = enemies[0]?.id ?? '';
@@ -675,13 +715,15 @@ export class Controller {
         .map((m) => `<p>${esc(m)}</p>`)
         .join(
           '',
-        )}</div><div class="combat-menu"><button class="primary" data-action="attack" ${isPlayer ? '' : 'disabled'}>${icon('sword', 14)} Attack</button><button data-action="skill" ${isPlayer && actor.mp >= CLASSES[actor.classId].cost ? '' : 'disabled'}>${CLASSES[s.progress.player.classId].skill} · ${CLASSES[s.progress.player.classId].cost}</button><button data-action="potion" ${isPlayer && c.resources.potions > 0 ? '' : 'disabled'}>Potion (${c.resources.potions})</button><button data-action="defend" ${isPlayer ? '' : 'disabled'}>${icon('shield', 14)} Defend</button><button data-action="flee" ${isPlayer ? '' : 'disabled'}>Flee</button></div><small style="font-size:9px">Select an enemy for attacks, or an ally for Mend and potions. Flee: 50%, or guaranteed with an unused Smoke Bomb.</small></section>`,
+        )}</div>${queueHtml}<div class="combat-menu">${button('attack', `${icon('sword', 14)} Attack`)}${button('skill', `${CLASSES[player.classId].skill} · ${CLASSES[player.classId].cost}`, player.mp < CLASSES[player.classId].cost)}${button('potion', `Potion (${c.resources.potions})`, c.resources.potions <= 0)}${button('defend', `${icon('shield', 14)} Defend`)}${button('flee', 'Flee')}</div><small style="font-size:9px">Select an enemy for attacks, or an ally for Mend and potions. Choose another action or target to replace your queue. Flee: 50%, or guaranteed with an unused Smoke Bomb.</small></section>`,
     );
   }
   private combatAction(type: Action['type']) {
     const s = this.state;
-    if (s.phase !== 'combat' || !activeFighter(s.combat).player) return;
-    const actor = activeFighter(s.combat);
+    if (s.phase !== 'combat') return;
+    const actor = s.combat.fighters.find((f) => f.player)!;
+    if (actor.hp <= 0) return;
+    const isPlayer = activeFighter(s.combat).player;
     let action: Action;
     if (type === 'defend' || type === 'flee') action = { type };
     else {
@@ -695,14 +737,20 @@ export class Controller {
         .sort((a, b) => (friendly ? a.hp / a.stats.hp - b.hp / b.stats.hp : a.hp - b.hp))[0];
       const target = selected ?? fallback;
       if (!target) return;
-      if (type === 'item' && target.hp === target.stats.hp) {
+      if (isPlayer && type === 'item' && target.hp === target.stats.hp) {
         this.toast('Choose an injured ally for the potion.');
         return;
       }
       action = { type, target: target.id };
     }
-    this.dispatch({ type: 'combat', action });
-    this.lastAI = performance.now();
+    if (isPlayer) {
+      this.queuedAction = undefined;
+      this.dispatch({ type: 'combat', action });
+      this.lastAI = performance.now();
+    } else {
+      this.queuedAction = action;
+      this.renderCombat();
+    }
   }
   private handle(el: HTMLElement) {
     const id = el.dataset.id ?? '';
@@ -773,6 +821,19 @@ export class Controller {
         break;
       case 'target':
         this.selectedTarget = id;
+        if (this.state.phase === 'combat' && this.queuedAction && 'target' in this.queuedAction) {
+          const friendly =
+            this.queuedAction.type === 'item' ||
+            (this.queuedAction.type === 'skill' && this.state.progress.player.classId === 'cleric');
+          const target = this.state.combat.fighters.find(
+            (f) => f.id === id && f.hp > 0 && f.team === (friendly ? 'party' : 'enemy'),
+          );
+          if (target) this.queuedAction = { ...this.queuedAction, target: id };
+        }
+        this.renderCombat();
+        break;
+      case 'cancel-queue':
+        this.queuedAction = undefined;
         this.renderCombat();
         break;
       case 'attack':
@@ -844,6 +905,7 @@ export class Controller {
       this.saveBlocked = false;
       this.state = transition(this.state, { type: 'reset' });
       this.path = [];
+      this.queuedAction = undefined;
       this.hubPosition = { x: 10, z: 10 };
       this.render();
       this.toast('Game reset. A new journey awaits.');

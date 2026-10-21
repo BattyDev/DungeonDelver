@@ -5,6 +5,7 @@ import {
   startCombat,
   createEnemy,
   GHOSTS,
+  CLASSES,
 } from '../../packages/rules/src/index';
 import type { GameState } from '../../packages/rules/src/index';
 import type { Page } from '@playwright/test';
@@ -141,4 +142,96 @@ test('sanctuary portal round trip and corrupt-save preservation', async ({ page 
   await page.getByRole('button', { name: 'Enter the Gathering Hall' }).click();
   await page.waitForTimeout(900);
   expect(await page.evaluate((key) => localStorage.getItem(key), key)).toBe('{"version":9000}');
+});
+
+function queuedCombat(): Extract<GameState, { phase: 'combat' }> {
+  const progress = newProgress('Planner', 'knight', 42);
+  progress.hires = [GHOSTS[0]];
+  const run = startRun(progress),
+    floor = run.floors[1];
+  const enemies = ['moss-0', 'moss-1'].map((id) => {
+    const enemy = createEnemy('slime', id, 1);
+    enemy.hp = enemy.stats.hp = 999;
+    enemy.stats.atk = 1;
+    return enemy;
+  });
+  const combat = startCombat(run.party, enemies, 42, run.resources);
+  combat.order = ['ghost-0', 'moss-0', 'player', 'moss-1'];
+  combat.cursor = 0;
+  return { phase: 'combat', progress, run, floor, patrolId: 'moss', combat };
+}
+
+async function pausedCombat(page: Page, state: GameState) {
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  await fixture(page, state);
+}
+
+test('combat pre-input can be replaced, retargeted, canceled, and executes once on the player turn', async ({
+  page,
+}) => {
+  const state = queuedCombat();
+  const mp = state.combat.fighters.find((f) => f.player)!.mp;
+  await pausedCombat(page, state);
+  await page.getByRole('button', { name: 'Attack', exact: true }).click({ force: true });
+  await expect(page.locator('.combat-queue')).toContainText('Queued: Attack');
+  await page.getByRole('button', { name: 'Defend', exact: true }).click({ force: true });
+  await expect(page.locator('.combat-queue')).toContainText('Queued: Defend');
+  await page.getByRole('button', { name: 'Cancel queued action' }).click({ force: true });
+  await expect(page.locator('.combat-queue')).not.toContainText('Queued:');
+  await page
+    .getByRole('button', { name: `Shield Bash · ${CLASSES.knight.cost}` })
+    .click({ force: true });
+  await page.locator('[data-action="target"][data-id="moss-1"]').click({ force: true });
+  expect((await saved(page)).combat.decisions).toHaveLength(0);
+  expect((await saved(page)).combat.fighters.find((f: { player: boolean }) => f.player).mp).toBe(
+    mp,
+  );
+  await page.clock.runFor(3400);
+  const combat = (await saved(page)).combat;
+  expect(combat.decisions).toHaveLength(1);
+  expect(combat.decisions[0].action).toEqual({ type: 'skill', target: 'moss-1' });
+  expect(combat.fighters.find((f: { player: boolean }) => f.player).mp).toBe(
+    mp - CLASSES.knight.cost,
+  );
+  await expect(page.locator('.combat-queue')).not.toContainText('Queued:');
+});
+
+test('a queued attack on a defeated target clears without using the player turn', async ({
+  page,
+}) => {
+  const state = queuedCombat();
+  state.combat.fighters.find((f) => f.id === 'moss-0')!.hp = 1;
+  state.combat.order = ['ghost-0', 'player', 'moss-0', 'moss-1'];
+  const companion = state.combat.fighters.find((f) => f.id === 'ghost-0')!;
+  companion.profile.defaults = { attack: 1, skill: 0, item: 0, defend: 0, flee: 0 };
+  await pausedCombat(page, state);
+  await page.getByRole('button', { name: 'Attack', exact: true }).click({ force: true });
+  await page.clock.runFor(1800);
+  const combat = (await saved(page)).combat;
+  expect(combat.fighters.find((f: { id: string }) => f.id === 'moss-0').hp).toBe(0);
+  expect(combat.decisions).toHaveLength(0);
+  expect(combat.order[combat.cursor]).toBe('player');
+  await expect(page.locator('.combat-queue')).not.toContainText('Queued:');
+  await expect(page.locator('.toast')).toContainText('Queued action is no longer available');
+});
+
+test('a queued potion rechecks shared supplies after companions act', async ({ page }) => {
+  const state = queuedCombat();
+  state.combat.order = ['ghost-0', 'player', 'moss-0', 'moss-1'];
+  state.combat.resources.potions = 1;
+  state.combat.fighters.find((f) => f.player)!.hp = 50;
+  const companion = state.combat.fighters.find((f) => f.id === 'ghost-0')!;
+  companion.hp = 10;
+  companion.profile.defaults = { attack: 0, skill: 0, item: 1, defend: 0, flee: 0 };
+  await pausedCombat(page, state);
+  await page.locator('[data-action="target"][data-id="player"]').click({ force: true });
+  await page.getByRole('button', { name: 'Potion (1)', exact: true }).click({ force: true });
+  await expect(page.locator('.combat-queue')).toContainText('Queued: Potion → Planner');
+  await page.clock.runFor(1800);
+  const combat = (await saved(page)).combat;
+  expect(combat.resources.potions).toBe(0);
+  expect(combat.decisions).toHaveLength(0);
+  expect(combat.order[combat.cursor]).toBe('player');
+  await expect(page.locator('.toast')).toContainText('Queued action is no longer available');
 });
