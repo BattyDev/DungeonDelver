@@ -6,7 +6,9 @@ Updated October 21, 2026. This document is for the owner and the next local codi
 
 The MVP has been built. Continue from this implementation; do not start by rebuilding the game from scratch.
 
-**Nothing has been pushed to GitHub or deployed publicly from this session.** The cloud GitHub connection could authenticate and read public repositories, but all attempted writes returned HTTP 403, including pushes to both repositories. The DungeonDelver repo was still empty on the last check. Local commits and downloadable archives contain the work. Opening this chat on a laptop did not change the cloud terminal into a laptop terminal.
+**Recovery completed:** source and commit history are now published at https://github.com/BattyDev/DungeonDelver. The game is live at https://battydev.com/DungeonDelve/ through domain PR https://github.com/BattyDev/BattyDev.github.io/pull/21. The domain Pages run succeeded; the public game URL returned HTTP 200 and its JS/CSS/favicon assets were checked against the tested production build.
+
+The former HTTP 403 restriction was resolved by installing/authorizing the OpenAI ChatGPT Codex Connector GitHub app. Historical references to an empty repo, unpushed commits or blocked publishing below describe the recovery period and are superseded by this status. The archived domain patch is no longer needed for the first deployment: do not apply it to the already-deployed domain main. For future updates rebuild and use a fresh branch/PR. Standalone project Pages deployment is opt-in with `ENABLE_PROJECT_PAGES=true`; the current live URL is served by the existing domain repository.
 
 Read these files before changing code:
 
