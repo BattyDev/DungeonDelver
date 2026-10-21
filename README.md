@@ -67,3 +67,7 @@ Enable **Settings → Pages → Build and deployment → Source: GitHub Actions*
 For `https://battydev.com/DungeonDelver/`, `battydev.com` should already be the custom domain of the account's root Pages site (`BattyDev/battydev.github.io`). Project sites inherit that domain. Do not set the project site's CNAME to the account root domain: this is a subpath deployment. If the root domain is hosted elsewhere, its server must route `/DungeonDelver/` to this build; a Pages project alone cannot configure another host.
 
 See [docs/MVP-STATUS.md](docs/MVP-STATUS.md) for implementation and verification status.
+
+### Existing domain deployment
+
+The domain repository, `BattyDev/BattyDev.github.io`, assembles battydev.com. To publish the requested `/DungeonDelve/` path there as a static directory, build with `DELVER_BASE_PATH=/DungeonDelve/ pnpm build` and copy `apps/client/dist` into `DungeonDelve/` in that repo. The default base stays `/DungeonDelver/` for the standalone project workflow. Follow the domain repository’s branch/PR deployment rules.
