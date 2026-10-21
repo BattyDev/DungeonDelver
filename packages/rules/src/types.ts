@@ -29,7 +29,7 @@ export interface PatrolState { id: string; position: Point; waypoint: number; pa
 export interface FloorState { id: number; position: Point; puzzle: PuzzleState; patrols: PatrolState[]; clueRead: boolean }
 export interface RunState { party: Fighter[]; resources: RunResources; unbankedGold: number; floors: Record<number, FloorState> }
 export interface Progress { player: Character; gold: number; hires: Ghost[]; unlockedPortals: number[]; checkpoint: 0 | 5; rng: number; decisions: DecisionLog[]; completedRuns: number }
-export type GameState = { phase: 'classSelect' } | { phase: 'hub' | 'safeRoom'; progress: Progress } | { phase: 'floor'; progress: Progress; run: RunState; floor: FloorState } | { phase: 'combat'; progress: Progress; run: RunState; floor: FloorState; patrolId: string; combat: CombatState };
+export type GameState = { phase: 'classSelect' } | { phase: 'hub'; progress: Progress } | { phase: 'safeRoom'; progress: Progress } | { phase: 'floor'; progress: Progress; run: RunState; floor: FloorState } | { phase: 'combat'; progress: Progress; run: RunState; floor: FloorState; patrolId: string; combat: CombatState };
 export interface SaveData { version: 1; state: GameState }
 export type GameCommand =
  | { type: 'newGame'; name: string; classId: ClassId; seed: number }

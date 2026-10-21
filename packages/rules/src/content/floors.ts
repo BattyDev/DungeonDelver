@@ -18,7 +18,7 @@ export const FLOORS: FloorDef[] = [
  '#####################'],
  spawn:{x:2,z:10},stairs:{x:18,z:2},clue:{x:3,z:8},hint:'Two stones. Two seals. Push each block north onto a gold plate. If a stone gets stuck, reset the puzzle.',
  puzzle:{type:'plates',blocks:[{x:4,z:4},{x:6,z:4}],plates:[{x:4,z:2},{x:6,z:2}]},puzzlePoints:[{x:4,z:4},{x:6,z:4}],
- patrols:[patrol('moss',['slime','slime'],[[3,9],[6,9],[6,11],[3,11]]),patrol('wings',['bat','slime'],[[11,3],[17,3],[17,5],[11,5]])]},
+ patrols:[patrol('moss',['slime','slime'],[[5,9],[7,9],[7,11],[5,11]]),patrol('wings',['bat','slime'],[[11,3],[17,3],[17,5],[11,5]])]},
  {id:2,title:'The Runic Archive',subtitle:'Read before you reach.',level:2,
  map:[
  '#####################',

@@ -1,1 +1,3 @@
-document.querySelector('#app')!.textContent = 'Dungeon Delver — rules development in progress.';
+import './styles.css';
+import { Controller } from './controller';
+new Controller(document.querySelector<HTMLElement>('#app')!);
