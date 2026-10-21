@@ -3,4 +3,4 @@ packages:
   - apps/*
 allowBuilds:
   esbuild: true
-storeDir: /tmp/delver-pnpm-store
+storeDir: .pnpm-store

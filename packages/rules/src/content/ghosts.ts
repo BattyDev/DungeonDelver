@@ -11,12 +11,12 @@ const entries: [string, ClassId, string, number, boolean][] = [
   ['Juniper', 'cleric', 'Merciful keeper', 30, true],
   ['Rook', 'knight', 'Shield first', 24, false],
   ['Wren', 'rogue', 'Daring scout', 29, false],
-  ['Pebble', 'knight', 'Community • simple guardian', 2, true],
+  ['Pebble', 'knight', 'Community • simple guardian', 0, true],
   ['Flint', 'knight', 'Community • watchful guard', 2, false],
-  ['Fern', 'cleric', 'Community • apprentice healer', 2, true],
+  ['Fern', 'cleric', 'Community • apprentice healer', 0, true],
   ['Clover', 'cleric', 'Community • kind acolyte', 2, false],
-  ['Pip', 'rogue', 'Community • eager scout', 2, true],
-  ['Moth', 'rogue', 'Community • quiet scout', 2, false],
+  ['Pip', 'rogue', 'Community • eager scout', 0, true],
+  ['Moth', 'rogue', 'Community • quiet scout', 0, false],
 ];
 export const GHOSTS: Ghost[] = entries.map(([name, classId, style, price, alternate], i) => {
   const community = i >= 8;

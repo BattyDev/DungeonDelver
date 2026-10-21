@@ -206,7 +206,12 @@ export class Controller {
     if (s.phase === 'classSelect') return;
     const p = s.progress;
     const characters = [p.player, ...p.hires.map((g) => g.character)];
-    const party = s.phase === 'floor' || s.phase === 'combat' ? s.run.party : undefined;
+    const party =
+      s.phase === 'combat'
+        ? s.combat.fighters.filter((f) => f.team === 'party')
+        : s.phase === 'floor'
+          ? s.run.party
+          : undefined;
     const roles = characters.map((c) => CLASSES[c.classId].role);
     this.root.querySelector('#right')!.innerHTML =
       `<section><div class="party-head"><h3>Your company</h3><span class="pill">${characters.length} / 4</span></div><div class="party-list">${characters
@@ -216,7 +221,7 @@ export class Controller {
         })
         .join(
           '',
-        )}${Array.from({ length: 4 - characters.length }, () => `<button class="empty-slot" data-action="roster"><span>+</span><span>A spirit to find</span></button>`).join('')}</div><div class="composition"><span class="${roles.includes('tank') ? 'ready' : 'missing'}">${icon('shield', 12)} ${roles.includes('tank') ? 'Tank ready' : 'Tank missing'}</span><span class="${roles.includes('healer') ? 'ready' : 'missing'}">${icon('heart', 12)} ${roles.includes('healer') ? 'Healer ready' : 'Healer missing'}</span></div></section>${s.phase === 'hub' ? `<section class="loadout-link"><button class="wide" data-action="loadout">${icon('sword', 15)} Manage loadout ${icon('arrow', 14)}</button></section><section class="community-link"><h3>Never descend alone</h3><p class="recruit-prompt">${icon('ghost', 17)} Tap a wandering spirit to meet them, or find an affordable companion below.</p><button class="wide" data-action="roster">Browse companions ${icon('arrow', 14)}</button></section>` : s.phase === 'floor' || s.phase === 'combat' ? `<section><span class="eyebrow right-title">Expedition supplies</span><p class="right-title" style="margin:12px 0 0">${s.run.resources.potions} potions · ${s.run.unbankedGold} unbanked gold<br>${p.player.xp} XP earned</p></section>` : ''}<section class="depart">${s.phase === 'hub' ? `<button class="primary wide" data-action="depart">${icon('stairs', 17)} Begin descent ${icon('arrow', 16)}</button><p>Floors 1–4 · Sanctuary at floor 5</p>${p.unlockedPortals.includes(5) ? `<button class="wide" style="margin-top:10px" data-action="portal">${icon('compass', 16)} Sanctuary portal</button>` : ''}` : s.phase === 'safeRoom' ? `<button class="primary wide" data-action="portal">${icon('compass', 16)} Return to the hub</button><p>Portal unlocked. Your progress is safe.</p>` : `<button class="wide" data-action="journal">${icon('book', 16)} Floor journal</button><p>Wipe: keep XP, lose unbanked gold.</p>`}</section>`;
+        )}${Array.from({ length: 4 - characters.length }, () => `<button class="empty-slot" data-action="roster"><span>+</span><span>A spirit to find</span></button>`).join('')}</div><div class="composition"><span class="${roles.includes('tank') ? 'ready' : 'missing'}">${icon('shield', 12)} ${roles.includes('tank') ? 'Tank ready' : 'Tank missing'}</span><span class="${roles.includes('healer') ? 'ready' : 'missing'}">${icon('heart', 12)} ${roles.includes('healer') ? 'Healer ready' : 'Healer missing'}</span></div></section>${s.phase === 'hub' ? `<section class="loadout-link"><button class="wide" data-action="loadout">${icon('sword', 15)} Manage loadout ${icon('arrow', 14)}</button></section><section class="community-link"><h3>Never descend alone</h3><p class="recruit-prompt">${icon('ghost', 17)} Tap a wandering spirit to meet them, or find an affordable companion below.</p><button class="wide" data-action="roster">Browse companions ${icon('arrow', 14)}</button></section>` : s.phase === 'floor' || s.phase === 'combat' ? `<section><span class="eyebrow right-title">Expedition supplies</span><p class="right-title" style="margin:12px 0 0">${s.phase === 'combat' ? s.combat.resources.potions : s.run.resources.potions} potions · ${s.run.unbankedGold} unbanked gold<br>${p.player.xp} XP earned</p></section>` : ''}<section class="depart">${s.phase === 'hub' ? `<button class="primary wide" data-action="depart">${icon('stairs', 17)} Begin descent ${icon('arrow', 16)}</button><p>Floors 1–4 · Sanctuary at floor 5</p>${p.unlockedPortals.includes(5) ? `<button class="wide" style="margin-top:10px" data-action="portal">${icon('compass', 16)} Sanctuary portal</button>` : ''}` : s.phase === 'safeRoom' ? `<button class="primary wide" data-action="portal">${icon('compass', 16)} Return to the hub</button><p>Portal unlocked. Your progress is safe.</p>` : `<button class="wide" data-action="journal">${icon('book', 16)} Floor journal</button><p>Wipe: keep XP, lose unbanked gold.</p>`}</section>`;
   }
   private renderStageChrome() {
     const s = this.state;
@@ -374,7 +379,14 @@ export class Controller {
     }
     const goal = click.point;
     this.path = this.findPath(goal);
-    if (!this.path.length && this.state.phase === 'floor') this.interact();
+    if (!this.path.length && this.state.phase === 'floor') {
+      const def = getFloor(this.state.floor.id);
+      if (
+        [def.clue, def.stairs, ...def.puzzlePoints].some((p) => p.x === goal.x && p.z === goal.z) &&
+        distance(this.state.floor.position, goal) <= 1.5
+      )
+        this.interact();
+    }
   }
   private findPath(goal: Point): Point[] {
     const s = this.state;
@@ -397,7 +409,10 @@ export class Controller {
     let end: Point | undefined;
     for (let n = 0; n < queue.length; n++) {
       const p = queue[n];
-      if ((p.x === goal.x && p.z === goal.z) || (interactable && distance(p, goal) <= 1)) {
+      if (
+        (p.x === goal.x && p.z === goal.z) ||
+        (!pass(goal) && interactable && distance(p, goal) <= 1)
+      ) {
         end = p;
         break;
       }

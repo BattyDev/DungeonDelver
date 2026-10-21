@@ -131,3 +131,37 @@ describe('combat', () => {
     expect(p.samples).toBe(0);
   });
 });
+it('Lucky Coin and Parrying Dagger use their specified seeded probabilities', () => {
+  let criticals = 0,
+    counters = 0;
+  for (let seed = 0; seed < 1000; seed++) {
+    const s = playerTurn(battle('knight'));
+    s.rng = seed;
+    s.fighters[0].effects = ['crit'];
+    if (
+      resolveTurn(s, { type: 'attack', target: 'e' }).messages.some((m) => m.includes('critical'))
+    )
+      criticals++;
+    s.fighters[0].effects = [];
+    s.fighters[1].effects = ['counter'];
+    if (
+      resolveTurn(s, { type: 'attack', target: 'e' }).messages.some((m) => m.includes('counters'))
+    )
+      counters++;
+  }
+  expect(criticals).toBeGreaterThan(120);
+  expect(criticals).toBeLessThan(180);
+  expect(counters).toBeGreaterThan(220);
+  expect(counters).toBeLessThan(280);
+});
+it('learned unavailable actions fall back to a legal basic attack', () => {
+  const s = battle();
+  const actor = activeFighter(s);
+  const base = resolveTurn(s, { type: 'attack', target: 'e' }).decisions[0];
+  actor.profile = learn(
+    roleProfile('dps'),
+    Array.from({ length: 5 }, () => ({ ...base, action: { type: 'item' as const, target: 'p' } })),
+  );
+  s.resources.potions = 0;
+  expect(chooseAction(s).action).toEqual({ type: 'attack', target: 'e' });
+});

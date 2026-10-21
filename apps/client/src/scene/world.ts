@@ -307,9 +307,9 @@ export class World {
     const dungeon = this.state.phase === 'floor' || this.state.phase === 'combat';
     const center = dungeon
       ? { x: Math.max(4, Math.min(16, this.target.x)), z: Math.max(3, Math.min(10, this.target.z)) }
-      : { x: 10, z: 6 };
+      : { x: Math.max(8, Math.min(12, this.target.x)), z: 6 };
     this.camera.position.lerp(
-      new THREE.Vector3(center.x, dungeon ? 10 : 12, center.z + (dungeon ? 11 : 13)),
+      new THREE.Vector3(center.x, dungeon ? 10 : 14, center.z + (dungeon ? 11 : 15)),
       0.045,
     );
     this.camera.lookAt(center.x, 0, center.z - 1);

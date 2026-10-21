@@ -136,3 +136,37 @@ describe('progression and exploration', () => {
     }
   });
 });
+it('every patrol segment stays on walkable floor geometry', () => {
+  for (const def of FLOORS)
+    for (const patrol of def.patrols)
+      for (let i = 0; i < patrol.path.length; i++) {
+        const a = patrol.path[i],
+          b = patrol.path[(i + 1) % patrol.path.length];
+        const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) * 4));
+        for (let t = 0; t <= steps; t++)
+          expect(
+            walkable(def, {
+              x: Math.round(a.x + ((b.x - a.x) * t) / steps),
+              z: Math.round(a.z + ((b.z - a.z) * t) / steps),
+            }),
+            `${def.id}:${patrol.id}`,
+          ).toBe(true);
+      }
+});
+it('a broke player can always recruit a balanced community party', () => {
+  for (const classId of ['knight', 'cleric', 'rogue'] as const) {
+    let s = transition({ phase: 'classSelect' }, { type: 'newGame', name: 'P', classId, seed: 1 });
+    if (s.phase !== 'hub') throw Error();
+    s.progress.gold = 0;
+    const ids =
+      classId === 'knight'
+        ? ['ghost-10', 'ghost-12', 'ghost-13']
+        : classId === 'cleric'
+          ? ['ghost-8', 'ghost-12', 'ghost-13']
+          : ['ghost-8', 'ghost-10', 'ghost-12'];
+    for (const ghostId of ids) s = transition(s, { type: 'hire', ghostId });
+    if (s.phase !== 'hub') throw Error();
+    expect(s.progress.hires).toHaveLength(3);
+    expect(s.progress.gold).toBe(0);
+  }
+});

@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+docs/GDD.md
+node_modules
+dist
+playwright-report
+test-results
