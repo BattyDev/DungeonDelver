@@ -1443,3 +1443,42 @@ kbd {
 .mini-map i.clue {
   background: #94c3d1;
 }
+/* Affiliation is encoded by silhouette, shape, text and color together. */
+.friendly-label {
+  border-color: #86cfc255;
+  background: #142e2ee8;
+}
+.friendly-label small {
+  color: #a3dbce;
+}
+.enemy-label {
+  pointer-events: none;
+  border: 1px solid #ed8d7780;
+  border-left: 3px solid #ed8d77;
+  background: #322326ef;
+  border-radius: 2px;
+}
+.enemy-label[hidden] {
+  display: none;
+}
+.enemy-label span {
+  color: #ffbcaa;
+}
+.enemy-label small {
+  color: #e0a995;
+  letter-spacing: 0.05em;
+}
+.hostile-avatar {
+  background: #542c334d;
+  border-color: #ed8d7777;
+}
+.hostile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.enemy-label {
+  width: max-content;
+  max-width: 180px;
+  white-space: nowrap;
+}

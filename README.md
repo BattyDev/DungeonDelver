@@ -35,6 +35,10 @@ For a system Chromium, use `CHROMIUM_PATH=/usr/bin/chromium pnpm test:browser`. 
 
 Desktop presentation is the priority. Basic touch movement and responsive controls are included, without a separate phone-specific design pass.
 
+## Reading characters at a glance
+
+“Ghost” means an offline snapshot of another player's character. Adventurers are ordinary humanoid sprites with faces, clothing, boots and class equipment. Friendly recruits have teal diamond markers and Recruit/In party labels; the controlled player has a gold circle. Hostiles have separate slime, bat, skeleton, flame, masked acolyte and armored warden silhouettes, red triangle markers and explicit HOSTILE/BOSS labels. Combat uses matching creature portraits. See the [character comparison](docs/previews/characters.png).
+
 ## Rules and balance decisions
 
 `packages/rules` has no runtime dependencies or browser/rendering imports. All state is serializable JSON. A seeded Mulberry32 RNG is passed through state; no game code uses `Math.random`, wall clocks, or global RNG state. Exploration advances in fixed 100 ms ticks. The client sends commands through `transition`; `resolveTurn` advances one actor at a time. Illegal commands do not consume RNG.

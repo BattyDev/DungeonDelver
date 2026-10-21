@@ -5,6 +5,7 @@ export const icon = (name: string, size = 20) => {
     shield: '<path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/>',
     heart:
       '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
+    companion: '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
     ghost: '<path d="M5 20V10a7 7 0 0 1 14 0v10l-3-2-4 3-4-3z"/><path d="M9 10h.01M15 10h.01"/>',
     coin: '<circle cx="12" cy="12" r="9"/><path d="M14 8h-3a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4h-4M12 6v12"/>',
     arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',

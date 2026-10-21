@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CLASSES, GHOSTS, getFloor, isSolved, ENEMIES } from '@delver/rules';
 import type { GameState, Point } from '@delver/rules';
-import { makeSprite } from './sprites';
+import { makeSprite, makeEnemySprite } from './sprites';
 export type WorldClick =
   | { kind: 'ground'; point: Point }
   | { kind: 'ghost'; id: string }
@@ -18,6 +18,10 @@ export class World {
   private rings = new Map<string, THREE.Mesh>();
   private followers = new Map<string, THREE.Sprite>();
   private labels: HTMLButtonElement[] = [];
+  private enemyLabels = new Map<string, HTMLDivElement>();
+  private friendlyMarkers: THREE.Mesh[] = [];
+  private threatMarkers = new Map<string, THREE.Mesh>();
+  private playerMarker?: THREE.Mesh;
   private raycaster = new THREE.Raycaster();
   private key = '';
   private state: GameState = { phase: 'classSelect' };
@@ -66,6 +70,21 @@ export class World {
     this.room.add(mesh);
     return mesh;
   }
+  private affiliationMarker(color: string, sides: number) {
+    const mesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.31, 0.37, sides),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    this.room.add(mesh);
+    return mesh;
+  }
   private marker(x: number, z: number, color: string, r = 0.34) {
     const mesh = new THREE.Mesh(
       new THREE.CylinderGeometry(r, r, 0.08, 32),
@@ -89,6 +108,11 @@ export class World {
     }
     this.labels.forEach((l) => l.remove());
     this.labels = [];
+    this.enemyLabels.forEach((l) => l.remove());
+    this.enemyLabels.clear();
+    this.friendlyMarkers = [];
+    this.threatMarkers.clear();
+    this.playerMarker = undefined;
     this.ghostSprites = [];
     this.enemies.clear();
     this.rings.clear();
@@ -112,7 +136,8 @@ export class World {
     if (!this.player) {
       this.player = makeSprite(s.progress.player.classId, s.progress.player.color);
       this.actors.add(this.player);
-      this.player.position.set(this.target.x, 0.95, this.target.z);
+      this.player.position.set(this.target.x, 0.82, this.target.z);
+      this.playerMarker = this.affiliationMarker('#e5ba72', 32);
     }
     const material = this.player.material as THREE.SpriteMaterial;
     if (this.player.userData.classId !== s.progress.player.classId) {
@@ -121,13 +146,26 @@ export class World {
       material.needsUpdate = true;
       this.player.userData.classId = s.progress.player.classId;
     }
+    if (s.phase === 'hub')
+      GHOSTS.filter((g) => !g.community).forEach((g, i) => {
+        const detail = this.labels[i]?.querySelector('small');
+        if (detail)
+          detail.textContent = `${CLASSES[g.character.classId].name} · ${s.progress.hires.some((h) => h.id === g.id) ? 'In party' : 'Recruit'}`;
+      });
     if (s.phase === 'floor' || s.phase === 'combat') {
       const def = getFloor(s.floor.id);
       for (const p of s.floor.patrols) {
         const actor = this.enemies.get(p.id);
         if (actor) {
           actor.visible = !p.defeated;
-          actor.position.set(p.position.x, 0.95, p.position.z);
+          actor.position.set(p.position.x, 0.82 * (actor.scale.y / 1.72), p.position.z);
+          const label = this.enemyLabels.get(p.id);
+          if (label) label.hidden = p.defeated;
+          const marker = this.threatMarkers.get(p.id);
+          if (marker) {
+            marker.visible = !p.defeated;
+            marker.position.set(p.position.x, 0.045, p.position.z);
+          }
           const ring = this.rings.get(p.id);
           if (ring) {
             ring.visible = !p.defeated && p.pauseTicks === 0;
@@ -143,7 +181,7 @@ export class World {
             s.floor.position.x -
               0.55 +
               (this.followers.size > 1 ? [...this.followers.keys()].indexOf(f.id) * 0.5 : 0),
-            0.8,
+            0.66,
             s.floor.position.z + 0.65,
           );
         }
@@ -240,10 +278,21 @@ export class World {
       this.marker(def.stairs.x, def.stairs.z, '#a6dec2', 0.65);
       def.patrols.forEach((p) => {
         const enemyDef = ENEMIES[p.enemyTypes[0]];
-        const sprite = makeSprite(enemyDef.classId, p.boss ? '#e7a373' : '#c7828c', true);
+        const sprite = makeEnemySprite(p.enemyTypes[0]);
         if (p.boss) sprite.scale.multiplyScalar(1.5);
         this.actors.add(sprite);
         this.enemies.set(p.id, sprite);
+        sprite.userData.labelOffset =
+          p.enemyTypes[0] === 'slime' ? 0.24 : p.enemyTypes[0] === 'bat' ? 0.48 : 0.86;
+        const marker = this.affiliationMarker('#ef8877', 3);
+        this.threatMarkers.set(p.id, marker);
+        const label = document.createElement('div');
+        label.className = 'world-label enemy-label';
+        label.dataset.affiliation = 'hostile';
+        label.dataset.patrolId = p.id;
+        label.innerHTML = `<span>! ${enemyDef.name}</span><small>${p.boss ? 'BOSS' : 'HOSTILE'} · ${p.enemyTypes.length} ${p.enemyTypes.length === 1 ? 'enemy' : 'enemies'}</small>`;
+        this.host.append(label);
+        this.enemyLabels.set(p.id, label);
         const radius =
           p.radius * (s.run.party.some((f) => f.effects.includes('stealth')) ? 0.6 : 1);
         const ring = new THREE.Mesh(
@@ -294,11 +343,17 @@ export class World {
           this.ghostSprites.push(sprite);
           this.actors.add(sprite);
           const button = document.createElement('button');
-          button.className = 'world-label';
-          button.innerHTML = `<span>${g.character.name}</span><small>${CLASSES[g.character.classId].name}</small>`;
+          button.className = 'world-label friendly-label';
+          button.dataset.affiliation = 'friendly';
+          button.setAttribute(
+            'aria-label',
+            `Inspect ${g.character.name}, friendly ${CLASSES[g.character.classId].name}`,
+          );
+          button.innerHTML = `<span>${g.character.name}</span><small>${CLASSES[g.character.classId].name} · Recruit</small>`;
           button.addEventListener('click', () => this.onClick({ kind: 'ghost', id: g.id }));
           this.host.append(button);
           this.labels[i] = button;
+          this.friendlyMarkers[i] = this.affiliationMarker('#86cfc2', 4);
         });
       }
     }
@@ -317,16 +372,33 @@ export class World {
     if (this.player) {
       this.player.position.x += (this.target.x - this.player.position.x) * 0.22;
       this.player.position.z += (this.target.z - this.player.position.z) * 0.22;
-      this.player.position.y = 0.94 + Math.sin(time * 2.5) * 0.035;
+      this.player.position.y = 0.82;
+      this.playerMarker?.position.set(this.player.position.x, 0.04, this.player.position.z);
     }
     this.ghostSprites.forEach((sprite, i) => {
       const base = this.ghostPoint(i, time);
-      sprite.position.set(base.x, 0.94 + Math.sin(time * 2 + i) * 0.05, base.z);
+      sprite.position.set(base.x, 0.82, base.z);
+      this.friendlyMarkers[i]?.position.set(base.x, 0.04, base.z);
       const projected = new THREE.Vector3(base.x, 1.9, base.z).project(this.camera);
       const label = this.labels[i];
       label.style.left = `${(projected.x * 0.5 + 0.5) * this.host.clientWidth}px`;
       label.style.top = `${(-projected.y * 0.5 + 0.5) * this.host.clientHeight}px`;
     });
+    for (const [id, label] of this.enemyLabels) {
+      const sprite = this.enemies.get(id)!;
+      const pos = new THREE.Vector3(
+        sprite.position.x,
+        sprite.position.y + Number(sprite.userData.labelOffset) * (sprite.scale.y / 1.72),
+        sprite.position.z,
+      ).project(this.camera);
+      const halfWidth = label.offsetWidth / 2 + 6;
+      label.style.left = `${Math.max(halfWidth, Math.min(this.host.clientWidth - halfWidth, (pos.x * 0.5 + 0.5) * this.host.clientWidth))}px`;
+      label.style.top = `${(-pos.y * 0.5 + 0.5) * this.host.clientHeight}px`;
+      label.style.visibility =
+        pos.z > 1 || pos.z < -1 || Math.abs(pos.x) > 1.08 || Math.abs(pos.y) > 1.08
+          ? 'hidden'
+          : 'visible';
+    }
     if (this.portal) this.portal.rotation.y = Math.sin(time * 0.6) * 0.25;
     this.renderer.render(this.scene, this.camera);
   }

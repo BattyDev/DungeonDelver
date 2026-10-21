@@ -1,5 +1,6 @@
 import {
   CLASSES,
+  ENEMIES,
   CLASS_IDS,
   GHOSTS,
   ITEMS,
@@ -18,7 +19,7 @@ import type { GameState, GameCommand, ClassId, Point, Ghost, Fighter, Action } f
 import { World } from './scene/world';
 import type { Storage } from './storage/storage';
 import type { WorldClick } from './scene/world';
-import { spriteTexture } from './scene/sprites';
+import { spriteTexture, enemyTexture } from './scene/sprites';
 import { Keyboard } from './input/keyboard';
 import { icon, escapeHtml as esc } from './ui/icons';
 const avatar = (classId: ClassId) =>
@@ -154,15 +155,15 @@ export class Controller {
     }
     this.shell = false;
     const name = this.root.querySelector<HTMLInputElement>('#player-name')?.value ?? '';
-    this.root.innerHTML = `<div class="class-screen"><header><div class="brand">${icon('compass')}<span>Dungeon <em>Delver</em></span></div><span>A SOLO ADVENTURE. A SHARED SPIRIT.</span></header><section class="class-content"><div class="intro"><div><span class="eyebrow">Your first descent</span><h1>Some journeys<br>need <em>company.</em></h1></div><p>Beyond the hall, an old dungeon stirs.<br>Choose your calling, gather a party of ghosts, and find out what waits beneath.</p></div><div class="class-cards">${CLASS_IDS.map(
+    this.root.innerHTML = `<div class="class-screen"><header><div class="brand">${icon('compass')}<span>Dungeon <em>Delver</em></span></div><span>A SOLO ADVENTURE. A SHARED SPIRIT.</span></header><section class="class-content"><div class="intro"><div><span class="eyebrow">Your first descent</span><h1>Some journeys<br>need <em>company.</em></h1></div><p>Beyond the hall, an old dungeon stirs.<br>Choose your calling, gather a party of adventurers, and find out what waits beneath.</p></div><div class="class-cards">${CLASS_IDS.map(
       (id) => {
         const c = CLASSES[id];
         const image = (spriteTexture(id, c.color).image as HTMLCanvasElement).toDataURL();
-        return `<button class="class-card ${this.selectedClass === id ? 'selected' : ''}" data-action="select-class" data-id="${id}" style="--class-color:${c.color}" aria-pressed="${this.selectedClass === id}"><div class="class-art"><img src="${image}" alt="${c.name} spirit"><span class="selection-mark">${this.selectedClass === id ? icon('check', 13) : ''}</span></div><div class="class-card-body"><span class="eyebrow" style="color:${c.color}">${c.role === 'dps' ? 'Damage dealer' : c.role}</span><h2>${c.name}</h2><p>${classCopy[id]}</p><div class="class-skill">${icon(id === 'knight' ? 'shield' : id === 'cleric' ? 'heart' : 'sword', 15)} ${c.skill}<span class="muted">· ${c.cost} MP</span></div></div></button>`;
+        return `<button class="class-card ${this.selectedClass === id ? 'selected' : ''}" data-action="select-class" data-id="${id}" style="--class-color:${c.color}" aria-pressed="${this.selectedClass === id}"><div class="class-art"><img src="${image}" alt="${c.name} adventurer"><span class="selection-mark">${this.selectedClass === id ? icon('check', 13) : ''}</span></div><div class="class-card-body"><span class="eyebrow" style="color:${c.color}">${c.role === 'dps' ? 'Damage dealer' : c.role}</span><h2>${c.name}</h2><p>${classCopy[id]}</p><div class="class-skill">${icon(id === 'knight' ? 'shield' : id === 'cleric' ? 'heart' : 'sword', 15)} ${c.skill}<span class="muted">· ${c.cost} MP</span></div></div></button>`;
       },
     ).join(
       '',
-    )}</div><form id="new-game" class="start-form"><div><label for="player-name">What should we call you?</label><input id="player-name" name="name" placeholder="Your adventurer’s name" maxlength="24" autocomplete="nickname" value="${esc(name)}" required></div><button class="primary" type="submit">Enter the Gathering Hall ${icon('arrow', 18)}</button></form><div class="class-bottom">${icon('ghost', 15)} You control one hero. Your three companions have minds of their own.</div></section><footer><span>FIVE FLOORS. FOUR SOULS. ONE WAY DOWN.</span><span>Offline · Saved on this device</span></footer></div>`;
+    )}</div><form id="new-game" class="start-form"><div><label for="player-name">What should we call you?</label><input id="player-name" name="name" placeholder="Your adventurer’s name" maxlength="24" autocomplete="nickname" value="${esc(name)}" required></div><button class="primary" type="submit">Enter the Gathering Hall ${icon('arrow', 18)}</button></form><div class="class-bottom">${icon('companion', 15)} You control one hero. Your three companions have minds of their own.</div></section><footer><span>FIVE FLOORS. FOUR SOULS. ONE WAY DOWN.</span><span>Offline · Saved on this device</span></footer></div>`;
     this.root.querySelector('#new-game')!.addEventListener('submit', (e) => {
       e.preventDefault();
       const name = this.root.querySelector<HTMLInputElement>('#player-name')!.value;
@@ -180,7 +181,7 @@ export class Controller {
     const dungeon = s.phase === 'floor' || s.phase === 'combat';
     const current = dungeon ? s.floor.id : s.phase === 'safeRoom' ? 5 : 0;
     this.root.querySelector('#left')!.innerHTML =
-      `<span class="eyebrow">The expedition</span><h2>A little deeper.<br>A little braver.</h2><p>Gather your party. Follow the runes. Come home together.</p><div class="floor-list">${['Gathering Hall', 'Overgrown Halls', 'Runic Archive', 'Ember Cloister', 'Warden’s Keep', 'Stillwater Sanctuary'].map((name, i) => `<div class="floor-row ${i === current ? 'current' : ''}"><span class="floor-number">${i === 0 ? icon('ghost', 13) : i === 5 ? icon('compass', 13) : i}</span><span>${name}<small>${i === 0 ? 'RECRUIT & PREPARE' : i === 5 ? 'SAFE FLOOR' : 'DUNGEON FLOOR'}</small></span>${i === current ? icon('arrow', 13) : i === 5 && s.progress.unlockedPortals.includes(5) ? icon('check', 13) : ''}</div>`).join('')}</div>${dungeon ? this.mapHtml() : ''}<div class="objective"><span class="eyebrow">${dungeon ? 'Floor objective' : 'Your next step'}</span><p>${dungeon ? this.puzzleDescription() : s.phase === 'safeRoom' ? 'You made it. Your checkpoint and hub portal are unlocked. Return whenever you like.' : 'Recruit up to three ghosts, choose your equipment, then take the eastern stairs.'}</p></div><div class="legend"><span><i class="dot"></i> ${dungeon ? 'You & puzzle objects' : 'Your calling'}</span><span><i class="dot green"></i> ${dungeon ? 'Stairs to the next floor' : 'Portal to sanctuary'}</span><span><i class="dot red"></i> ${dungeon ? 'Enemy patrol' : 'A little danger below'}</span></div>`;
+      `<span class="eyebrow">The expedition</span><h2>A little deeper.<br>A little braver.</h2><p>Gather your party. Follow the runes. Come home together.</p><div class="floor-list">${['Gathering Hall', 'Overgrown Halls', 'Runic Archive', 'Ember Cloister', 'Warden’s Keep', 'Stillwater Sanctuary'].map((name, i) => `<div class="floor-row ${i === current ? 'current' : ''}"><span class="floor-number">${i === 0 ? icon('companion', 13) : i === 5 ? icon('compass', 13) : i}</span><span>${name}<small>${i === 0 ? 'RECRUIT & PREPARE' : i === 5 ? 'SAFE FLOOR' : 'DUNGEON FLOOR'}</small></span>${i === current ? icon('arrow', 13) : i === 5 && s.progress.unlockedPortals.includes(5) ? icon('check', 13) : ''}</div>`).join('')}</div>${dungeon ? this.mapHtml() : ''}<div class="objective"><span class="eyebrow">${dungeon ? 'Floor objective' : 'Your next step'}</span><p>${dungeon ? this.puzzleDescription() : s.phase === 'safeRoom' ? 'You made it. Your checkpoint and hub portal are unlocked. Return whenever you like.' : 'Recruit up to three ghosts, choose your equipment, then take the eastern stairs.'}</p></div><div class="legend"><span><i class="dot"></i> ${dungeon ? 'You & puzzle objects' : 'Your calling'}</span><span><i class="dot green"></i> ${dungeon ? 'Stairs to the next floor' : 'Portal to sanctuary'}</span><span><i class="dot red"></i> ${dungeon ? 'Enemy patrol' : 'A little danger below'}</span></div>`;
   }
   private mapHtml() {
     const s = this.state;
@@ -221,7 +222,7 @@ export class Controller {
         })
         .join(
           '',
-        )}${Array.from({ length: 4 - characters.length }, () => `<button class="empty-slot" data-action="roster"><span>+</span><span>A spirit to find</span></button>`).join('')}</div><div class="composition"><span class="${roles.includes('tank') ? 'ready' : 'missing'}">${icon('shield', 12)} ${roles.includes('tank') ? 'Tank ready' : 'Tank missing'}</span><span class="${roles.includes('healer') ? 'ready' : 'missing'}">${icon('heart', 12)} ${roles.includes('healer') ? 'Healer ready' : 'Healer missing'}</span></div></section>${s.phase === 'hub' ? `<section class="loadout-link"><button class="wide" data-action="loadout">${icon('sword', 15)} Manage loadout ${icon('arrow', 14)}</button></section><section class="community-link"><h3>Never descend alone</h3><p class="recruit-prompt">${icon('ghost', 17)} Tap a wandering spirit to meet them, or find an affordable companion below.</p><button class="wide" data-action="roster">Browse companions ${icon('arrow', 14)}</button></section>` : s.phase === 'floor' || s.phase === 'combat' ? `<section><span class="eyebrow right-title">Expedition supplies</span><p class="right-title" style="margin:12px 0 0">${s.phase === 'combat' ? s.combat.resources.potions : s.run.resources.potions} potions · ${s.run.unbankedGold} unbanked gold<br>${p.player.xp} XP earned</p></section>` : ''}<section class="depart">${s.phase === 'hub' ? `<button class="primary wide" data-action="depart">${icon('stairs', 17)} Begin descent ${icon('arrow', 16)}</button><p>Floors 1–4 · Sanctuary at floor 5</p>${p.unlockedPortals.includes(5) ? `<button class="wide" style="margin-top:10px" data-action="portal">${icon('compass', 16)} Sanctuary portal</button>` : ''}` : s.phase === 'safeRoom' ? `<button class="primary wide" data-action="portal">${icon('compass', 16)} Return to the hub</button><p>Portal unlocked. Your progress is safe.</p>` : `<button class="wide" data-action="journal">${icon('book', 16)} Floor journal</button><p>Wipe: keep XP, lose unbanked gold.</p>`}</section>`;
+        )}${Array.from({ length: 4 - characters.length }, () => `<button class="empty-slot" data-action="roster"><span>+</span><span>An open party slot</span></button>`).join('')}</div><div class="composition"><span class="${roles.includes('tank') ? 'ready' : 'missing'}">${icon('shield', 12)} ${roles.includes('tank') ? 'Tank ready' : 'Tank missing'}</span><span class="${roles.includes('healer') ? 'ready' : 'missing'}">${icon('heart', 12)} ${roles.includes('healer') ? 'Healer ready' : 'Healer missing'}</span></div></section>${s.phase === 'hub' ? `<section class="loadout-link"><button class="wide" data-action="loadout">${icon('sword', 15)} Manage loadout ${icon('arrow', 14)}</button></section><section class="community-link"><h3>Never descend alone</h3><p class="recruit-prompt">${icon('companion', 17)} Tap a wandering adventurer to meet them, or find an affordable companion below.</p><button class="wide" data-action="roster">Browse companions ${icon('arrow', 14)}</button></section>` : s.phase === 'floor' || s.phase === 'combat' ? `<section><span class="eyebrow right-title">Expedition supplies</span><p class="right-title" style="margin:12px 0 0">${s.phase === 'combat' ? s.combat.resources.potions : s.run.resources.potions} potions · ${s.run.unbankedGold} unbanked gold<br>${p.player.xp} XP earned</p></section>` : ''}<section class="depart">${s.phase === 'hub' ? `<button class="primary wide" data-action="depart">${icon('stairs', 17)} Begin descent ${icon('arrow', 16)}</button><p>Floors 1–4 · Sanctuary at floor 5</p>${p.unlockedPortals.includes(5) ? `<button class="wide" style="margin-top:10px" data-action="portal">${icon('compass', 16)} Sanctuary portal</button>` : ''}` : s.phase === 'safeRoom' ? `<button class="primary wide" data-action="portal">${icon('compass', 16)} Return to the hub</button><p>Portal unlocked. Your progress is safe.</p>` : `<button class="wide" data-action="journal">${icon('book', 16)} Floor journal</button><p>Wipe: keep XP, lose unbanked gold.</p>`}</section>`;
   }
   private renderStageChrome() {
     const s = this.state;
@@ -251,7 +252,7 @@ export class Controller {
       button.addEventListener('pointercancel', release);
     });
     this.root.querySelector('#stage-footer')!.innerHTML =
-      `<div class="key-hints"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move <span>·</span><kbd>E</kbd> interact ${dungeon ? '<span>·</span><kbd>Shift</kbd> sneak' : ''}</div><span class="floor-description muted" style="font-size:10px">${dungeon ? 'Tap the floor to move. Touch a patrol to fight.' : 'Tap a spirit to meet them. Tap the floor to wander.'}</span><button data-action="${dungeon ? 'journal' : 'roster'}">${icon(dungeon ? 'book' : 'ghost', 14)} ${dungeon ? 'Journal' : 'Companions'}</button>`;
+      `<div class="key-hints"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move <span>·</span><kbd>E</kbd> interact ${dungeon ? '<span>·</span><kbd>Shift</kbd> sneak' : ''}</div><span class="floor-description muted" style="font-size:10px">${dungeon ? 'Tap the floor to move. Touch a patrol to fight.' : 'Tap an adventurer to meet them. Tap the floor to wander.'}</span><button data-action="${dungeon ? 'journal' : 'roster'}">${icon(dungeon ? 'book' : 'companion', 14)} ${dungeon ? 'Journal' : 'Companions'}</button>`;
     this.renderInteraction();
   }
   private updateWorld() {
@@ -532,7 +533,7 @@ export class Controller {
     const canHire =
       this.state.phase === 'hub' && !hired && !full && this.state.progress.gold >= g.price;
     this.openModal(
-      `<div class="ghost-title">${avatar(g.character.classId)}<div><span class="eyebrow">${g.community ? 'Community spirit' : `Ghost of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${CLASSES[g.character.classId].name} · ${g.style}</small></div></div><blockquote>“${g.dialogue}”</blockquote><div class="stat-grid">${[
+      `<div class="ghost-title">${avatar(g.character.classId)}<div><span class="eyebrow">${g.community ? 'Community companion' : `Offline snapshot of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${CLASSES[g.character.classId].name} · ${g.style}</small></div></div><blockquote>“${g.dialogue}”</blockquote><div class="stat-grid">${[
         ['HP', stats.hp],
         ['ATK', stats.atk],
         ['DEF', stats.def],
@@ -557,13 +558,13 @@ export class Controller {
     if (this.state.phase === 'classSelect') return;
     const hires = this.state.progress.hires;
     this.openModal(
-      `<span class="eyebrow">A spirit for every journey</span><h2>Find your company.</h2><p class="muted">Real character. Borrowed courage. Fees are paid up front; companions stay for one run.</p><h3>Wandering adventurers</h3><div class="roster">${GHOSTS.filter(
+      `<span class="eyebrow">A companion for every journey</span><h2>Find your company.</h2><p class="muted">Real character. Borrowed courage. Fees are paid up front; companions stay for one run.</p><h3>Wandering adventurers</h3><div class="roster">${GHOSTS.filter(
         (g) => !g.community,
       )
         .map((g) => this.rosterRow(g, hires))
         .join(
           '',
-        )}</div><h3>Community spirits</h3><p class="muted">Simple tactics, a small price. Two companions of every role, always available.</p><div class="roster">${GHOSTS.filter(
+        )}</div><h3>Community companions</h3><p class="muted">Simple tactics, a small price. Two companions of every role, always available.</p><div class="roster">${GHOSTS.filter(
         (g) => g.community,
       )
         .map((g) => this.rosterRow(g, hires))
@@ -622,7 +623,7 @@ export class Controller {
     if (!c.fighters.some((f) => f.hp > 0 && f.id === this.selectedTarget))
       this.selectedTarget = enemies[0]?.id ?? '';
     const fighterHtml = (f: Fighter) =>
-      `<button class="fighter ${actor.id === f.id ? 'active' : ''} ${f.hp <= 0 ? 'dead' : ''} ${this.selectedTarget === f.id ? 'targeted' : ''}" data-action="target" data-id="${f.id}" ${f.hp <= 0 ? 'disabled' : ''}>${avatar(f.classId)}<div class="fighter-info"><strong>${esc(f.name)} ${f.boss ? '♛' : ''}${f.player ? ' · YOU' : ''}</strong><div class="bar"><span style="width:${(f.hp / f.stats.hp) * 100}%"></span></div><small>${f.hp} / ${f.stats.hp} HP</small><div class="bar mp"><span style="width:${f.stats.mp ? (f.mp / f.stats.mp) * 100 : 0}%"></span></div><small>${f.mp} MP ${f.defending ? '· Guarding' : ''}${f.tauntTurns ? '· Taunting' : ''}</small></div></button>`;
+      `<button class="fighter ${actor.id === f.id ? 'active' : ''} ${f.hp <= 0 ? 'dead' : ''} ${this.selectedTarget === f.id ? 'targeted' : ''}" data-action="target" data-id="${f.id}" ${f.hp <= 0 ? 'disabled' : ''}>${f.team === 'enemy' ? `<span class="avatar hostile-avatar"><img src="${(enemyTexture(Object.keys(ENEMIES).find((type) => ENEMIES[type].name === f.name) ?? 'cultist').image as HTMLCanvasElement).toDataURL()}" alt=""></span>` : avatar(f.classId)}<div class="fighter-info"><strong>${esc(f.name)} ${f.boss ? '♛' : ''}${f.player ? ' · YOU' : ''}</strong><div class="bar"><span style="width:${(f.hp / f.stats.hp) * 100}%"></span></div><small>${f.hp} / ${f.stats.hp} HP</small><div class="bar mp"><span style="width:${f.stats.mp ? (f.mp / f.stats.mp) * 100 : 0}%"></span></div><small>${f.mp} MP ${f.defending ? '· Guarding' : ''}${f.tauntTurns ? '· Taunting' : ''}</small></div></button>`;
     stage.insertAdjacentHTML(
       'beforeend',
       `<section class="combat-overlay" aria-label="Combat"><div class="combat-heading"><div><span class="eyebrow">Floor ${s.floor.id} · Encounter</span><h2>${c.fighters.some((f) => f.boss) ? 'The Key Warden' : 'Stand together.'}</h2></div><span class="pill">ROUND ${c.round}</span></div><div class="turn-banner">${icon('sword', 14)} ${isPlayer ? 'Your turn. Choose an action and a target.' : `${esc(actor.name)} is acting…`}</div><div class="combatants"><div class="combat-team">${c.fighters
@@ -693,7 +694,7 @@ export class Controller {
       case 'hire':
         this.dispatch({ type: 'hire', ghostId: id });
         this.closeModal();
-        this.toast('A new spirit joins your company.');
+        this.toast('A new adventurer joins your company.');
         break;
       case 'dismiss':
         this.dispatch({ type: 'dismiss', ghostId: id });
