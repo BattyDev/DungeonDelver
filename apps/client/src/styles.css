@@ -948,6 +948,26 @@ kbd {
   align-items: center;
   gap: 7px;
 }
+.combat-queue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #a9d9bd33;
+  border-radius: 6px;
+  color: var(--green);
+  font-size: 11px;
+}
+.combat-queue button {
+  padding: 5px 8px;
+  font-size: 10px;
+}
+.combat-menu button.queued {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 .interaction {
   position: absolute;
   bottom: 20px;

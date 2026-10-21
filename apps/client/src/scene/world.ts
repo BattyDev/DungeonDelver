@@ -24,8 +24,11 @@ export class World {
   private playerMarker?: THREE.Mesh;
   private raycaster = new THREE.Raycaster();
   private key = '';
-  private state: GameState = { phase: 'classSelect' };
   private target: Point = { x: 10, z: 9 };
+  private cameraFocus = new THREE.Vector3();
+  private cameraReady = false;
+  private lastAnimation?: number;
+  private puzzleKey = '';
   private resizeObserver: ResizeObserver;
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private portal?: THREE.Mesh;
@@ -118,9 +121,10 @@ export class World {
     this.rings.clear();
     this.followers.clear();
     this.portal = undefined;
+    this.cameraReady = false;
+    this.puzzleKey = '';
   }
   setState(s: GameState, hubPosition: Point) {
-    this.state = s;
     const key =
       s.phase === 'floor' || s.phase === 'combat'
         ? `floor-${s.floor.id}`
@@ -186,62 +190,66 @@ export class World {
           );
         }
       }
-      this.room.children
-        .filter((o) => o.userData.dynamic)
-        .forEach((o) => {
-          this.room.remove(o);
-          const m = o as THREE.Mesh;
-          m.geometry?.dispose();
-          (m.material as THREE.Material)?.dispose();
-        });
-      const p = s.floor.puzzle;
-      if (p.type === 'plates') {
-        for (const plate of p.plates) {
-          const m = this.marker(plate.x, plate.z, '#e1b565', 0.42);
-          m.userData.dynamic = true;
-        }
-        for (const b of p.blocks) {
-          const m = this.box(b.x, b.z, 0.72, 0.72, 0.7, '#9fa38a');
-          m.userData.dynamic = true;
-        }
-      }
-      if (p.type === 'levers')
-        def.puzzlePoints.forEach((pt, i) => {
-          const m = this.marker(
-            pt.x,
-            pt.z,
-            p.sequence.slice(0, p.progress).includes(i) ? '#9ee7b3' : '#e2b15b',
-          );
-          m.userData.dynamic = true;
-          const pole = this.box(pt.x, pt.z, 0.12, 0.12, 0.7, '#d1b36d');
-          pole.userData.dynamic = true;
-        });
-      if (p.type === 'braziers')
-        def.puzzlePoints.forEach((pt, i) => {
-          const m = this.marker(pt.x, pt.z, p.lit[i] ? '#ffa851' : '#53646b', 0.35);
-          m.userData.dynamic = true;
-          const bowl = this.box(pt.x, pt.z, 0.5, 0.5, 0.4, '#5b6965');
-          bowl.userData.dynamic = true;
-          if (p.lit[i]) {
-            const flame = this.marker(pt.x, pt.z, '#ffc876', 0.22);
-            flame.position.y = 0.6;
-            flame.userData.dynamic = true;
+      const puzzleKey = JSON.stringify(s.floor.puzzle);
+      if (puzzleKey !== this.puzzleKey) {
+        this.puzzleKey = puzzleKey;
+        this.room.children
+          .filter((o) => o.userData.dynamic)
+          .forEach((o) => {
+            this.room.remove(o);
+            const m = o as THREE.Mesh;
+            m.geometry?.dispose();
+            (m.material as THREE.Material)?.dispose();
+          });
+        const p = s.floor.puzzle;
+        if (p.type === 'plates') {
+          for (const plate of p.plates) {
+            const m = this.marker(plate.x, plate.z, '#e1b565', 0.42);
+            m.userData.dynamic = true;
           }
-        });
-      if (p.type === 'key' && !p.collected) {
-        const pt = def.puzzlePoints[0];
-        const m = this.marker(pt.x, pt.z, p.guardDefeated ? '#f5d37d' : '#a55f63');
-        m.userData.dynamic = true;
+          for (const b of p.blocks) {
+            const m = this.box(b.x, b.z, 0.72, 0.72, 0.7, '#9fa38a');
+            m.userData.dynamic = true;
+          }
+        }
+        if (p.type === 'levers')
+          def.puzzlePoints.forEach((pt, i) => {
+            const m = this.marker(
+              pt.x,
+              pt.z,
+              p.sequence.slice(0, p.progress).includes(i) ? '#9ee7b3' : '#e2b15b',
+            );
+            m.userData.dynamic = true;
+            const pole = this.box(pt.x, pt.z, 0.12, 0.12, 0.7, '#d1b36d');
+            pole.userData.dynamic = true;
+          });
+        if (p.type === 'braziers')
+          def.puzzlePoints.forEach((pt, i) => {
+            const m = this.marker(pt.x, pt.z, p.lit[i] ? '#ffa851' : '#53646b', 0.35);
+            m.userData.dynamic = true;
+            const bowl = this.box(pt.x, pt.z, 0.5, 0.5, 0.4, '#5b6965');
+            bowl.userData.dynamic = true;
+            if (p.lit[i]) {
+              const flame = this.marker(pt.x, pt.z, '#ffc876', 0.22);
+              flame.position.y = 0.6;
+              flame.userData.dynamic = true;
+            }
+          });
+        if (p.type === 'key' && !p.collected) {
+          const pt = def.puzzlePoints[0];
+          const m = this.marker(pt.x, pt.z, p.guardDefeated ? '#f5d37d' : '#a55f63');
+          m.userData.dynamic = true;
+        }
+        const door = this.box(
+          def.stairs.x,
+          def.stairs.z,
+          0.9,
+          0.25,
+          isSolved(p) ? 0.15 : 1.6,
+          isSolved(p) ? '#88d6ba' : '#aa8255',
+        );
+        door.userData.dynamic = true;
       }
-      const door = this.box(
-        def.stairs.x,
-        def.stairs.z,
-        0.9,
-        0.25,
-        isSolved(p) ? 0.15 : 1.6,
-        isSolved(p) ? '#88d6ba' : '#aa8255',
-      );
-      door.userData.dynamic = true;
     }
   }
   private build(s: GameState) {
@@ -359,22 +367,26 @@ export class World {
     }
   }
   animate(time: number) {
-    const dungeon = this.state.phase === 'floor' || this.state.phase === 'combat';
-    const center = dungeon
-      ? { x: Math.max(4, Math.min(16, this.target.x)), z: Math.max(3, Math.min(10, this.target.z)) }
-      : { x: Math.max(8, Math.min(12, this.target.x)), z: 6 };
-    this.camera.position.lerp(
-      new THREE.Vector3(center.x, dungeon ? 10 : 14, center.z + (dungeon ? 11 : 15)),
-      0.045,
+    const delta = Math.min(
+      this.lastAnimation === undefined ? 1 / 60 : time - this.lastAnimation,
+      0.05,
     );
-    this.camera.lookAt(center.x, 0, center.z - 1);
-
+    this.lastAnimation = time;
     if (this.player) {
-      this.player.position.x += (this.target.x - this.player.position.x) * 0.22;
-      this.player.position.z += (this.target.z - this.player.position.z) * 0.22;
+      const follow = 1 - Math.exp(-24 * delta);
+      this.player.position.x += (this.target.x - this.player.position.x) * follow;
+      this.player.position.z += (this.target.z - this.player.position.z) * follow;
       this.player.position.y = 0.82;
       this.playerMarker?.position.set(this.player.position.x, 0.04, this.player.position.z);
     }
+    const focus = this.player?.position ?? new THREE.Vector3(this.target.x, 0.82, this.target.z);
+    if (!this.cameraReady) {
+      this.cameraFocus.copy(focus);
+      this.cameraReady = true;
+    } else this.cameraFocus.lerp(focus, 1 - Math.exp(-8 * delta));
+    // Translate position and aim together: no abrupt rotation at room-edge clamps.
+    this.camera.position.set(this.cameraFocus.x, 3.2, this.cameraFocus.z + 8.5);
+    this.camera.lookAt(this.cameraFocus.x, 0.8, this.cameraFocus.z - 1);
     this.ghostSprites.forEach((sprite, i) => {
       const base = this.ghostPoint(i, time);
       sprite.position.set(base.x, 0.82, base.z);
@@ -438,19 +450,7 @@ export class World {
     }
     const point = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.plane, point)) {
-      const p = { x: Math.round(point.x), z: Math.round(point.z) };
-      if (this.state.phase === 'floor') {
-        const def = getFloor(this.state.floor.id);
-        if (
-          Math.hypot(p.x - def.stairs.x, p.z - def.stairs.z) < 1 ||
-          def.puzzlePoints.some((q) => q.x === p.x && q.z === p.z) ||
-          (p.x === def.clue.x && p.z === def.clue.z)
-        ) {
-          this.onClick({ kind: 'ground', point: p });
-          return;
-        }
-      }
-      this.onClick({ kind: 'ground', point: p });
+      this.onClick({ kind: 'ground', point: { x: point.x, z: point.z } });
     }
   }
 }

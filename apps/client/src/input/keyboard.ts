@@ -3,7 +3,6 @@ export class Keyboard {
   constructor(
     private interact: () => void,
     private close: () => void,
-    private move: (dx: number, dz: number) => void,
   ) {
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
@@ -16,17 +15,6 @@ export class Keyboard {
         e.preventDefault();
       this.held.add(key);
       if (!e.repeat) {
-        const direction: Record<string, [number, number]> = {
-          w: [0, -1],
-          arrowup: [0, -1],
-          s: [0, 1],
-          arrowdown: [0, 1],
-          a: [-1, 0],
-          arrowleft: [-1, 0],
-          d: [1, 0],
-          arrowright: [1, 0],
-        };
-        if (direction[key]) this.move(...direction[key]);
         if (['e', 'enter', ' '].includes(key) && !(e.target as HTMLElement).closest('button'))
           this.interact();
       }
@@ -35,10 +23,10 @@ export class Keyboard {
     window.addEventListener('blur', () => this.held.clear());
   }
   direction(): [number, number] | undefined {
-    if (this.held.has('w') || this.held.has('arrowup')) return [0, -1];
-    if (this.held.has('s') || this.held.has('arrowdown')) return [0, 1];
-    if (this.held.has('a') || this.held.has('arrowleft')) return [-1, 0];
-    if (this.held.has('d') || this.held.has('arrowright')) return [1, 0];
-    return undefined;
+    const held = (a: string, b: string) => Number(this.held.has(a) || this.held.has(b));
+    const dx = held('d', 'arrowright') - held('a', 'arrowleft');
+    const dz = held('s', 'arrowdown') - held('w', 'arrowup');
+    const length = Math.hypot(dx, dz);
+    return length ? [dx / length, dz / length] : undefined;
   }
 }

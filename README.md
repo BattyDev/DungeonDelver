@@ -27,15 +27,18 @@ For a system Chromium, use `CHROMIUM_PATH=/usr/bin/chromium pnpm test:browser`. 
 
 ## Playing
 
-- WASD/arrows or clicking the floor: move. A short key tap takes one step; holding repeats.
+- WASD/arrows: continuous movement, including diagonals at the same speed. Release to stop; walk into walls to slide along them. Clicking the floor follows a route through open space.
 - E/Enter: nearby interaction. Tap an NPC or use Companions to inspect and hire.
 - Shift: sneak; detection rings show the unsneaking detection range. Shadow Cloak reduces it by 40%; sneaking reduces it further.
 - In combat, select an enemy for attacks or an ally for Mend/potions. Only the player is controlled directly. Ghosts and enemies act automatically in speed order.
+- You can choose an action during another character's turn to queue it. Change the action or target to replace it, or use Cancel. It executes once on your next turn; invalid targets or unavailable resources cancel it without spending your turn. Queues clear when combat ends or the page reloads.
 - Read the pale-blue rune tablets for puzzle clues. The Journal holds discovered clues and a stone reset option.
 - Gear/class changes and hires are hub-only. A tank, healer and two damage dealers are recommended.
 - The settings menu pauses the expedition and contains Reset Game with confirmation.
 
 Desktop presentation is the priority. Basic touch movement and responsive controls are included, without a separate phone-specific design pass.
+
+The camera follows from a lower, closer angle, smoothing its position and aim together without changing angle at room edges. Stone blocks still push one cell at a time to keep the pressure-plate puzzle readable; walking around them is continuous. Existing version 1 saves load, and new saves retain fractional positions. Local browser checks run one at a time to avoid software WebGL contention; CI retains parallel checks.
 
 ## Reading characters at a glance
 

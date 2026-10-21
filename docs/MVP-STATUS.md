@@ -31,7 +31,10 @@ Additional checks: strict typechecking includes rules, client, tests and tool co
 
 ## Final local checks
 
-- `pnpm test`: 35 tests passing.
+- October 21 local feedback pass: continuous walking with normalized diagonals and wall sliding, smoother click routes, and a low camera that follows without room-edge rotation snaps. Pressure-plate pushes retain their original cell-based puzzle rules; version 1 saves support both existing integer and new fractional player positions.
+- Combat actions can be queued during other actors' turns, replaced, retargeted or canceled. The action is revalidated and logged only when the player's turn executes. A defeated target or exhausted shared potion supply cancels the queue without consuming that turn. Queues are temporary and clear on reload or encounter end.
+- The owner's future threat/aggro and class-role direction is recorded in HANDOFF.md. Encounter balance and class skills are unchanged in this pass.
+- `pnpm test`: 40 tests passing.
 - `pnpm typecheck`: passing, including test and tool configurations.
-- `pnpm test:browser`: 4 Chromium browser checks passing.
+- `pnpm test:browser`: 8 Chromium browser checks passing (one worker locally to avoid software WebGL contention).
 - `pnpm build`: passing with the `/DungeonDelver/` asset base.
