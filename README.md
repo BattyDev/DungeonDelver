@@ -1,5 +1,7 @@
 # Dungeon Delver
 
+Starting a fresh local session? Read [HANDOFF.md](HANDOFF.md) first.
+
 An offline, single-player dungeon crawler: choose a calling, hire three ghost companions, solve four dungeon floors, and reach the floor 5 sanctuary. Billboarded canvas sprites inhabit a Three.js world; the UI is HTML/CSS. The authoritative scope is [docs/GDD.md](docs/GDD.md).
 
 ## Run locally

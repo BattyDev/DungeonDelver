@@ -6,3 +6,6 @@ playwright-report/
 test-results/
 
 .pnpm-store/
+
+# Optional transfer artifacts included in the downloadable handoff ZIP.
+handoff/
