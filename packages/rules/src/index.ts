@@ -16,3 +16,4 @@ export * from './floors/key-hunt';
 export * from './floors/exploration';
 export * from './progression';
 export * from './game';
+export * from './save';

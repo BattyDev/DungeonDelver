@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "pnpm --filter @delver/client dev --host 0.0.0.0",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/rules/tsconfig.json && tsc -p apps/client/tsconfig.json",
-    "build": "pnpm typecheck && pnpm --filter @delver/client build"
+    "typecheck": "tsc -p packages/rules/tsconfig.json && tsc -p apps/client/tsconfig.json && tsc -p tsconfig.tools.json",
+    "build": "pnpm typecheck && pnpm --filter @delver/client build",
+    "test:browser": "playwright test",
+    "format": "prettier --write ."
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "24.10.0",
+    "prettier": "3.6.2",
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   }
