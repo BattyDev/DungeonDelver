@@ -56,26 +56,20 @@ test('keyboard pushes blocks and the floor persists', async ({ page }) => {
   const progress = newProgress('P', 'knight', 1),
     run = startRun(progress),
     floor = run.floors[1];
-  floor.position = { x: 4, z: 5 };
+  floor.position = { x: 17, z: 16.1 };
   floor.patrols.forEach((p) => (p.pauseTicks = 9999));
   await page.clock.install();
   await fixture(page, { phase: 'floor', progress, run, floor });
   await page.clock.pauseAt(new Date(Date.now() + 1000));
-  for (const [key, duration] of [
-    ['ArrowUp', 450],
-    ['ArrowRight', 225],
-    ['ArrowDown', 450],
-    ['ArrowRight', 225],
-    ['ArrowUp', 450],
-  ] as const) {
-    await page.keyboard.down(key);
-    await page.clock.runFor(duration);
-    await page.keyboard.up(key);
-  }
+  // Walking north shoves the west stone two cells, until the vault pillar stops it.
+  await page.keyboard.down('ArrowUp');
+  await page.clock.runFor(900);
+  await page.keyboard.up('ArrowUp');
   await page.clock.runFor(1000);
-  expect((await saved(page)).floor.puzzle.blocks.map((b: { z: number }) => b.z)).toEqual([2, 2]);
+  expect((await saved(page)).floor.puzzle.blocks[0]).toEqual({ x: 17, z: 13 });
   await page.reload();
-  await expect(page.locator('#left')).toContainText('The seal is broken');
+  expect((await saved(page)).floor.puzzle.blocks[0]).toEqual({ x: 17, z: 13 });
+  await expect(page.locator('#left')).toContainText('Push all 3 stones');
 });
 test('Mend can explicitly target a selected ally', async ({ page }) => {
   const progress = newProgress('P', 'cleric', 42);
@@ -114,8 +108,8 @@ test('walking is continuous, diagonal speed is normalized, and fractional positi
   await page.keyboard.up('w');
   await page.clock.runFor(1000);
   const position = (await saved(page)).floor.position;
-  const dx = position.x - 2,
-    dz = 10 - position.z;
+  const dx = position.x - 3,
+    dz = 23 - position.z;
   expect(dx).toBeGreaterThan(0.3);
   expect(dx).toBeLessThan(0.8);
   expect(dx).toBeCloseTo(dz, 1);
@@ -234,4 +228,42 @@ test('a queued potion rechecks shared supplies after companions act', async ({ p
   expect(combat.decisions).toHaveLength(0);
   expect(combat.order[combat.cursor]).toBe('player');
   await expect(page.locator('.toast')).toContainText('Queued action is no longer available');
+});
+
+test('a chosen race and sex carry into the hall, and the studio sends a look to the game', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Dwarf' }).click();
+  await page.getByRole('button', { name: 'Male', exact: true }).click();
+  await page.getByLabel('What should we call you?').fill('Brick');
+  await page.getByRole('button', { name: 'Enter the Gathering Hall' }).click();
+  await expect
+    .poll(async () => (await saved(page)).progress.player.appearance)
+    .toEqual({
+      race: 'dwarf',
+      sex: 'M',
+    });
+  await expect(page.locator('#location-name')).toContainText('Great Hall');
+  await page.goto('./studio.html');
+  await expect(page.locator('#room canvas')).toBeVisible();
+  await page.getByRole('button', { name: 'Dwarf' }).click();
+  await page.getByRole('button', { name: 'Male', exact: true }).click();
+  await page.locator('#sendBtn').click();
+  // A preview compares the current game look with the drawing before anything is sent.
+  await expect(page.locator('#pvNew')).toBeVisible();
+  await page.locator('#confirmSend').click();
+  await expect(page.locator('#toast')).toContainText('dwarf male Knight');
+  const wardrobe = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('dungeon-delver.wardrobe.v1') ?? '{}'),
+  );
+  expect(Object.keys(wardrobe)).toEqual(['dwarfM|tank']);
+  expect(Object.keys(wardrobe['dwarfM|tank'].anims)).toEqual(
+    expect.arrayContaining(['idle', 'walk', 'attack', 'block']),
+  );
+  await page.getByRole('link', { name: '← Gathering Hall' }).click();
+  await expect(page.locator('.party-member')).toHaveCount(1);
+  expect(errors).toEqual([]);
 });

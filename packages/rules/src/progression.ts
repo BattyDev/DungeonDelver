@@ -3,9 +3,14 @@ import { defaultLoadout } from './items';
 import { createFighter } from './combat';
 import { getFloor } from './content/floors';
 import { createFloor } from './floors/exploration';
-import type { Character, ClassId, Fighter, Progress, RunState } from './types';
+import type { Appearance, Character, ClassId, Fighter, Progress, RunState } from './types';
 export const STARTING_GOLD = 120;
-export function newProgress(name: string, classId: ClassId, seed: number): Progress {
+export function newProgress(
+  name: string,
+  classId: ClassId,
+  seed: number,
+  appearance?: Appearance,
+): Progress {
   const player: Character = {
     id: 'player',
     ownerId: 'local-player',
@@ -14,6 +19,7 @@ export function newProgress(name: string, classId: ClassId, seed: number): Progr
     xp: 0,
     color: CLASSES[classId].color,
     loadout: defaultLoadout(classId),
+    ...(appearance ? { appearance: { ...appearance } } : {}),
   };
   return {
     player,

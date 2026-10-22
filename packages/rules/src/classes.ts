@@ -1,4 +1,4 @@
-import type { ClassId, Role, Stats } from './types';
+import type { ClassId, Race, Role, Sex, Stats } from './types';
 export const CLASSES: Record<
   ClassId,
   {
@@ -40,3 +40,5 @@ export const CLASSES: Record<
   },
 };
 export const CLASS_IDS: ClassId[] = ['knight', 'cleric', 'rogue'];
+export const RACE_IDS: Race[] = ['human', 'orc', 'elf', 'dwarf', 'gnome'];
+export const SEX_IDS: Sex[] = ['F', 'M'];

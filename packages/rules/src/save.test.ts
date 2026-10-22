@@ -32,7 +32,27 @@ it('loads existing tile positions and preserves fractional walking positions exa
   state = transition(state, { type: 'move', dx: 0.06, dz: -0.08 });
   expect(parseSave(serializeSave(state)).state).toEqual(state);
   if (state.phase !== 'floor') throw Error();
-  expect(state.floor.position).toEqual({ x: 2.06, z: 9.92 });
-  state.floor.position = { x: 9.1, z: 1.2 };
+  expect(state.floor.position).toEqual({ x: 3.06, z: 22.92 });
+  state.floor.position = { x: 12.1, z: 1.2 };
   expect(() => parseSave(serializeSave(state))).toThrow();
+});
+it('keeps the chosen race and sex, and rejects unknown bodies', () => {
+  const hub = transition(
+    { phase: 'classSelect' },
+    {
+      type: 'newGame',
+      name: 'Gnome',
+      classId: 'cleric',
+      seed: 3,
+      appearance: { race: 'gnome', sex: 'M' },
+    },
+  );
+  expect(parseSave(serializeSave(hub)).state).toEqual(hub);
+  if (hub.phase !== 'hub') throw Error();
+  expect(hub.progress.player.appearance).toEqual({ race: 'gnome', sex: 'M' });
+  const changed = transition(hub, { type: 'changeClass', classId: 'knight' });
+  if (changed.phase !== 'hub') throw Error();
+  expect(changed.progress.player.appearance).toEqual({ race: 'gnome', sex: 'M' });
+  (hub.progress.player.appearance as { race: string }).race = 'troll';
+  expect(() => parseSave(serializeSave(hub))).toThrow();
 });

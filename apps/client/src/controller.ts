@@ -3,6 +3,8 @@ import {
   ENEMIES,
   CLASS_IDS,
   GHOSTS,
+  RACE_IDS,
+  SEX_IDS,
   ITEMS,
   SLOTS,
   deriveStats,
@@ -15,15 +17,37 @@ import {
   distance,
   canOccupy,
 } from '@delver/rules';
-import type { GameState, GameCommand, ClassId, Point, Ghost, Fighter, Action } from '@delver/rules';
+import type {
+  GameState,
+  GameCommand,
+  ClassId,
+  Point,
+  Ghost,
+  Fighter,
+  Action,
+  Race,
+  Sex,
+  Character,
+} from '@delver/rules';
 import { World } from './scene/world';
 import type { Storage } from './storage/storage';
 import type { WorldClick } from './scene/world';
-import { spriteTexture, enemyTexture } from './scene/sprites';
+import { enemyTexture } from './scene/sprites';
 import { Keyboard } from './input/keyboard';
+import { CombatStage } from './ui/combat-stage';
+import { Minimap } from './ui/minimap';
 import { icon, escapeHtml as esc } from './ui/icons';
-const avatar = (classId: ClassId) =>
-  `<span class="avatar" style="--class-color:${CLASSES[classId].color}">${CLASSES[classId].glyph}</span>`;
+import { HALL, HALL_MAP, hallRoomAt } from './scene/hall';
+import { canStand, moveOnGrid } from './scene/grid';
+import { lookById } from './scene/cast';
+import { characterLook, defaultLook, lookImage, lookPortrait, pumpDolls } from './paperdoll/looks';
+import type { Look } from './paperdoll/looks';
+import { GAME_CLASS_LOOK, RACES, SEXES } from './paperdoll/model';
+import { RETURN_KEY } from './paperdoll/wardrobe';
+const avatarLook = (look: Look, classId: ClassId) =>
+  `<span class="avatar portrait" style="--class-color:${CLASSES[classId].color}"><img src="${lookPortrait(look)}" alt=""></span>`;
+const characterAvatar = (c: Pick<Character, 'id' | 'classId' | 'appearance'>, player: boolean) =>
+  avatarLook(player ? characterLook(c, true) : lookById(c.id, c.classId), c.classId);
 const classCopy: Record<ClassId, string> = {
   knight: 'Hold the line. Protect your party with steel and stubborn resolve.',
   cleric: 'Keep hope alive. Mend your allies and bring everyone home.',
@@ -32,9 +56,11 @@ const classCopy: Record<ClassId, string> = {
 export class Controller {
   state: GameState = { phase: 'classSelect' };
   private selectedClass: ClassId = 'knight';
+  private selectedRace: Race = 'human';
+  private selectedSex: Sex = 'F';
   private world?: World;
   private keyboard: Keyboard;
-  private hubPosition: Point = { x: 10, z: 10 };
+  private hubPosition: Point = { ...HALL.spawn };
   private path: Point[] = [];
   private modal?: HTMLElement;
   private toastTimer = 0;
@@ -46,6 +72,10 @@ export class Controller {
   private sneak = false;
   private selectedTarget = '';
   private queuedAction?: Action;
+  private combatStage?: CombatStage;
+  private minimap = new Minimap();
+  private hudCollapsed = false;
+  private bannerTimer = 0;
   private shell = false;
   private time = 0;
   private paused = false;
@@ -61,9 +91,21 @@ export class Controller {
   ) {
     this.state = initial;
     this.saveBlocked = !!warning;
+    try {
+      if (sessionStorage.getItem(RETURN_KEY) === 'changing')
+        this.hubPosition = { ...HALL.changingReturn };
+      sessionStorage.removeItem(RETURN_KEY);
+    } catch {
+      // Session storage is only a convenience here.
+    }
     this.keyboard = new Keyboard(
       () => this.interact(),
       () => this.closeModal(),
+      () => {
+        if (this.state.phase === 'classSelect' || this.modal) return;
+        this.hudCollapsed = !this.hudCollapsed;
+        this.renderLeft();
+      },
     );
     root.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
@@ -87,8 +129,12 @@ export class Controller {
     if (previous === this.state) return;
     this.scheduleSave();
     const lightweight = command.type === 'tick' || command.type === 'move';
+    if (previous.phase === 'combat' && this.state.phase === 'combat' && this.combatStage)
+      this.combatStage.update(previous.combat, this.state.combat);
+    if (this.state.phase !== 'combat') this.combatStage = undefined;
     if (command.type === 'startRun') {
       this.path = [];
+      this.minimap.reset();
       this.toast('Your expedition begins. Keep a healer close.');
     }
     if (previous.phase === 'combat' && this.state.phase !== 'combat') {
@@ -106,13 +152,13 @@ export class Controller {
     }
     if (previous.phase === 'floor' && this.state.phase === 'safeRoom') {
       this.toast('Sanctuary reached. Gold banked, hires dismissed, portal unlocked.');
-      this.hubPosition = { x: 10, z: 8 };
+      this.hubPosition = { ...HALL.sanctuaryReturn };
     }
     if (!lightweight || previous.phase !== this.state.phase) this.render();
     else {
       this.updateWorld();
-      if (command.type === 'move' && performance.now() - this.lastMap > 150) {
-        this.renderLeft();
+      if (performance.now() - this.lastMap > 150) {
+        this.updateMinimap();
         this.lastMap = performance.now();
       }
       this.renderInteraction();
@@ -124,7 +170,7 @@ export class Controller {
       return;
     }
     if (!this.shell) {
-      this.root.innerHTML = `<div class="shell"><header class="topbar"><div class="brand">${icon('compass')}<span>Dungeon <em>Delver</em></span></div><div class="location"><span>The expedition</span><span>/</span><span id="location-name">The Gathering Hall</span></div><div class="top-actions"><span id="gold" class="gold"></span><span class="save-status" id="save-status">Offline adventure</span><button class="subtle" data-action="settings" aria-label="Settings">${icon('gear')}</button></div></header><div class="game-layout"><aside class="sidebar left" id="left"></aside><section class="stage-wrap"><div class="stage" id="stage"></div><div class="stage-footer" id="stage-footer"></div></section><aside class="sidebar right" id="right"></aside></div></div>`;
+      this.root.innerHTML = `<div class="shell hud-shell"><header class="topbar"><div class="brand">${icon('compass')}<span>Dungeon <em>Delver</em></span></div><div class="location"><span>The expedition</span><span>/</span><span id="location-name">The Gathering Hall</span></div><div class="top-actions"><span id="gold" class="gold"></span><span class="save-status" id="save-status">Offline adventure</span><button class="subtle" data-action="settings" aria-label="Settings">${icon('gear')}</button></div></header><div class="game-layout"><section class="stage-wrap"><div class="stage" id="stage"></div><aside class="hud hud-left" id="left" aria-label="Expedition"></aside><aside class="hud hud-right" id="right" aria-label="Your company"></aside><div class="stage-footer" id="stage-footer"></div></section></div></div>`;
       try {
         this.world = new World(this.root.querySelector('#stage')!, (click) =>
           this.worldClick(click),
@@ -139,7 +185,7 @@ export class Controller {
       `${icon('coin', 16)} ${this.state.progress.gold}<small> gold</small>`;
     this.root.querySelector('#location-name')!.textContent =
       this.state.phase === 'hub'
-        ? 'The Gathering Hall'
+        ? `The Gathering Hall · ${hallRoomAt(this.hubPosition)?.name ?? 'Passage'}`
         : this.state.phase === 'safeRoom'
           ? 'The Stillwater Sanctuary'
           : `Floor ${this.state.floor.id}`;
@@ -160,12 +206,19 @@ export class Controller {
     this.root.innerHTML = `<div class="class-screen"><header><div class="brand">${icon('compass')}<span>Dungeon <em>Delver</em></span></div><span>A SOLO ADVENTURE. A SHARED SPIRIT.</span></header><section class="class-content"><div class="intro"><div><span class="eyebrow">Your first descent</span><h1>Some journeys<br>need <em>company.</em></h1></div><p>Beyond the hall, an old dungeon stirs.<br>Choose your calling, gather a party of adventurers, and find out what waits beneath.</p></div><div class="class-cards">${CLASS_IDS.map(
       (id) => {
         const c = CLASSES[id];
-        const image = (spriteTexture(id, c.color).image as HTMLCanvasElement).toDataURL();
-        return `<button class="class-card ${this.selectedClass === id ? 'selected' : ''}" data-action="select-class" data-id="${id}" style="--class-color:${c.color}" aria-pressed="${this.selectedClass === id}"><div class="class-art"><img src="${image}" alt="${c.name} adventurer"><span class="selection-mark">${this.selectedClass === id ? icon('check', 13) : ''}</span></div><div class="class-card-body"><span class="eyebrow" style="color:${c.color}">${c.role === 'dps' ? 'Damage dealer' : c.role}</span><h2>${c.name}</h2><p>${classCopy[id]}</p><div class="class-skill">${icon(id === 'knight' ? 'shield' : id === 'cleric' ? 'heart' : 'sword', 15)} ${c.skill}<span class="muted">· ${c.cost} MP</span></div></div></button>`;
+        const image = lookImage(
+          {
+            ...defaultLook(this.selectedRace, this.selectedSex, GAME_CLASS_LOOK[id]),
+            custom: true,
+          },
+          'idle',
+          7,
+        );
+        return `<button class="class-card ${this.selectedClass === id ? 'selected' : ''}" data-action="select-class" data-id="${id}" style="--class-color:${c.color}" aria-pressed="${this.selectedClass === id}"><div class="class-art"><img class="pixel-art" src="${image}" alt="${RACES[this.selectedRace].label} ${c.name}"><span class="selection-mark">${this.selectedClass === id ? icon('check', 13) : ''}</span></div><div class="class-card-body"><span class="eyebrow" style="color:${c.color}">${c.role === 'dps' ? 'Damage dealer' : c.role}</span><h2>${c.name}</h2><p>${classCopy[id]}</p><div class="class-skill">${icon(id === 'knight' ? 'shield' : id === 'cleric' ? 'heart' : 'sword', 15)} ${c.skill}<span class="muted">· ${c.cost} MP</span></div></div></button>`;
       },
     ).join(
       '',
-    )}</div><form id="new-game" class="start-form"><div><label for="player-name">What should we call you?</label><input id="player-name" name="name" placeholder="Your adventurer’s name" maxlength="24" autocomplete="nickname" value="${esc(name)}" required></div><button class="primary" type="submit">Enter the Gathering Hall ${icon('arrow', 18)}</button></form><div class="class-bottom">${icon('companion', 15)} You control one hero. Your three companions have minds of their own.</div></section><footer><span>FIVE FLOORS. FOUR SOULS. ONE WAY DOWN.</span><span>Offline · Saved on this device</span></footer></div>`;
+    )}</div><div class="body-picker"><div role="group" aria-label="Race"><span class="eyebrow">Race</span>${RACE_IDS.map((r) => `<button type="button" class="chip ${this.selectedRace === r ? 'selected' : ''}" data-action="select-race" data-id="${r}" aria-pressed="${this.selectedRace === r}">${RACES[r].label}</button>`).join('')}</div><div role="group" aria-label="Sex"><span class="eyebrow">Sex</span>${SEX_IDS.map((x) => `<button type="button" class="chip ${this.selectedSex === x ? 'selected' : ''}" data-action="select-sex" data-id="${x}" aria-pressed="${this.selectedSex === x}">${SEXES[x].label}</button>`).join('')}</div><a class="chip studio-link" href="studio.html">${icon('gear', 13)} Edit sprites in the Changing Room</a></div><form id="new-game" class="start-form"><div><label for="player-name">What should we call you?</label><input id="player-name" name="name" placeholder="Your adventurer’s name" maxlength="24" autocomplete="nickname" value="${esc(name)}" required></div><button class="primary" type="submit">Enter the Gathering Hall ${icon('arrow', 18)}</button></form><div class="class-bottom">${icon('companion', 15)} You control one hero. Your three companions have minds of their own.</div></section><footer><span>FIVE FLOORS. FOUR SOULS. ONE WAY DOWN.</span><span>Offline · Saved on this device</span></footer></div>`;
     this.root.querySelector('#new-game')!.addEventListener('submit', (e) => {
       e.preventDefault();
       const name = this.root.querySelector<HTMLInputElement>('#player-name')!.value;
@@ -174,36 +227,86 @@ export class Controller {
         name,
         classId: this.selectedClass,
         seed: crypto.getRandomValues(new Uint32Array(1))[0],
+        appearance: { race: this.selectedRace, sex: this.selectedSex },
       });
     });
   }
+  /** Top-left card: where you are, what to do, how far along, and the map. */
   private renderLeft() {
     if (this.state.phase === 'classSelect') return;
     const s = this.state;
     const dungeon = s.phase === 'floor' || s.phase === 'combat';
-    const current = dungeon ? s.floor.id : s.phase === 'safeRoom' ? 5 : 0;
-    this.root.querySelector('#left')!.innerHTML =
-      `<span class="eyebrow">The expedition</span><h2>A little deeper.<br>A little braver.</h2><p>Gather your party. Follow the runes. Come home together.</p><div class="floor-list">${['Gathering Hall', 'Overgrown Halls', 'Runic Archive', 'Ember Cloister', 'Warden’s Keep', 'Stillwater Sanctuary'].map((name, i) => `<div class="floor-row ${i === current ? 'current' : ''}"><span class="floor-number">${i === 0 ? icon('companion', 13) : i === 5 ? icon('compass', 13) : i}</span><span>${name}<small>${i === 0 ? 'RECRUIT & PREPARE' : i === 5 ? 'SAFE FLOOR' : 'DUNGEON FLOOR'}</small></span>${i === current ? icon('arrow', 13) : i === 5 && s.progress.unlockedPortals.includes(5) ? icon('check', 13) : ''}</div>`).join('')}</div>${dungeon ? this.mapHtml() : ''}<div class="objective"><span class="eyebrow">${dungeon ? 'Floor objective' : 'Your next step'}</span><p>${dungeon ? this.puzzleDescription() : s.phase === 'safeRoom' ? 'You made it. Your checkpoint and hub portal are unlocked. Return whenever you like.' : 'Recruit up to three ghosts, choose your equipment, then take the eastern stairs.'}</p></div><div class="legend"><span><i class="dot"></i> ${dungeon ? 'You & puzzle objects' : 'Your calling'}</span><span><i class="dot green"></i> ${dungeon ? 'Stairs to the next floor' : 'Portal to sanctuary'}</span><span><i class="dot red"></i> ${dungeon ? 'Enemy patrol' : 'A little danger below'}</span></div>`;
+    const def = dungeon ? getFloor(s.floor.id) : undefined;
+    const deepest = dungeon
+      ? `Deepest this run: ${Math.max(...Object.keys(s.run.floors).map(Number))}`
+      : s.progress.unlockedPortals.includes(5)
+        ? 'Sanctuary reached'
+        : 'Not yet descended';
+    const where =
+      s.phase === 'hub'
+        ? (hallRoomAt(this.hubPosition)?.name ?? 'Passage')
+        : s.phase === 'safeRoom'
+          ? 'Stillwater Sanctuary'
+          : def!.title;
+    const objective = dungeon
+      ? this.puzzleDescription()
+      : s.phase === 'safeRoom'
+        ? 'You made it. Your checkpoint and hub portal are unlocked.'
+        : 'Recruit up to three companions, check your loadout in the Armory, then take the stairs in the Descent.';
+    const left = this.root.querySelector<HTMLElement>('#left')!;
+    left.classList.toggle('collapsed', this.hudCollapsed);
+    left.innerHTML = `<div class="hud-card"><div class="hud-floor"><span class="floor-pill">${dungeon ? `Floor ${s.floor.id}` : s.phase === 'safeRoom' ? 'Floor 5 · Safe' : 'Floor 0 · Hall'}</span><span>${deepest}</span><button class="subtle hud-toggle" data-action="toggle-hud" aria-expanded="${!this.hudCollapsed}" aria-label="${this.hudCollapsed ? 'Show map and objective' : 'Hide map and objective'}">${this.hudCollapsed ? '▾' : '▴'}</button></div><h1 id="hud-title">${esc(where)}</h1><div class="hud-body"><p class="hud-objective">${objective}</p>${dungeon ? `<div class="hud-progress">${this.puzzleProgress()}</div>` : ''}<canvas class="minimap" aria-label="${dungeon ? 'Floor map, revealed as you explore' : 'Hall map'}"></canvas></div></div>`;
+    this.updateMinimap();
   }
-  private mapHtml() {
+  private updateMinimap() {
+    if (this.state.phase === 'classSelect') return;
+    const s = this.state;
+    if (s.phase === 'floor' || s.phase === 'combat')
+      this.minimap.reveal(s.floor.id, s.floor.position);
+    const canvas = this.root.querySelector<HTMLCanvasElement>('#left .minimap');
+    if (canvas && !this.hudCollapsed) this.minimap.draw(canvas, s, this.hubPosition);
+  }
+  /** Short progress chips for the floor puzzle. */
+  private puzzleProgress() {
     const s = this.state;
     if (s.phase !== 'floor' && s.phase !== 'combat') return '';
-    const def = getFloor(s.floor.id);
-    return `<div class="mini-map" aria-label="Floor map" style="grid-template-columns:repeat(21,1fr)">${def.map.map((row, z) => [...row].map((t, x) => `<i class="${Math.round(s.floor.position.x) === x && Math.round(s.floor.position.z) === z ? 'player' : def.stairs.x === x && def.stairs.z === z ? 'goal' : def.clue.x === x && def.clue.z === z ? 'clue' : s.floor.patrols.some((p) => !p.defeated && Math.round(p.position.x) === x && Math.round(p.position.z) === z) ? 'foe' : t === '#' ? 'wall' : ''}"></i>`).join('')).join('')}</div>`;
+    const p = s.floor.puzzle;
+    const chip = (label: string, done: boolean) =>
+      `<span class="chip ${done ? 'done' : ''}">${done ? icon('check', 11) : ''}${label}</span>`;
+    if (p.type === 'plates') {
+      const seated = p.plates.filter((q) =>
+        p.blocks.some((b) => b.x === q.x && b.z === q.z),
+      ).length;
+      return chip(`Stones seated ${seated} / ${p.plates.length}`, seated === p.plates.length);
+    }
+    if (p.type === 'levers')
+      return (
+        chip(`Levers ${p.progress} / ${p.sequence.length}`, p.progress === p.sequence.length) +
+        chip('Clue read', s.floor.clueRead)
+      );
+    if (p.type === 'braziers') {
+      const lit = p.lit.filter(Boolean).length;
+      return (
+        chip(`Lit ${lit} / ${p.lit.length}`, lit === p.lit.length) +
+        chip('Clue read', s.floor.clueRead)
+      );
+    }
+    return chip('Warden defeated', p.guardDefeated) + chip('Key taken', p.collected);
   }
   private puzzleDescription() {
     const s = this.state;
     if (s.phase !== 'floor' && s.phase !== 'combat') return '';
     if (isSolved(s.floor.puzzle)) return 'The seal is broken. Find the green stairs and descend.';
-    const type = s.floor.puzzle.type;
-    return type === 'plates'
-      ? 'Push the two stone blocks onto the gold pressure plates.'
-      : type === 'levers'
-        ? 'Find the rune tablet, then pull the levers in its order.'
-        : type === 'braziers'
-          ? 'Light all five braziers. Each flame toggles its neighbors.'
+    const p = s.floor.puzzle;
+    return p.type === 'plates'
+      ? `Push all ${p.blocks.length} stones in the vault onto the gold pressure plates.`
+      : p.type === 'levers'
+        ? `Find the rune tablet, then pull the ${p.sequence.length} levers in its order.`
+        : p.type === 'braziers'
+          ? `Light all ${p.lit.length} braziers. Each flame toggles the flames bound to it.`
           : 'Defeat the Key Warden, then collect the key from its pedestal.';
   }
+  /** Bottom-right: party portraits with an open + per empty slot, and the actions for this place. */
   private renderRight() {
     const s = this.state;
     if (s.phase === 'classSelect') return;
@@ -216,28 +319,50 @@ export class Controller {
           ? s.run.party
           : undefined;
     const roles = characters.map((c) => CLASSES[c.classId].role);
+    const members = characters
+      .map((c, i) => {
+        const fighter = party?.find((f) => f.id === c.id);
+        const hp = fighter ? fighter.hp / fighter.stats.hp : 1;
+        return `<div class="party-member ${i === 0 ? 'you' : ''} ${fighter && fighter.hp <= 0 ? 'down' : ''}" title="${esc(c.name)} · ${CLASSES[c.classId].name}${fighter ? ` · ${fighter.hp}/${fighter.stats.hp} HP` : ` · Level ${levelFromXp(c.xp)}`}">${characterAvatar(c, i === 0)}${i > 0 && s.phase === 'hub' ? `<button class="dismiss" data-action="dismiss" data-id="${c.id}" aria-label="Dismiss ${esc(c.name)}">${icon('close', 10)}</button>` : ''}<strong>${esc(c.name)}</strong><div class="bar"><span style="width:${hp * 100}%"></span></div><small>${fighter ? `${fighter.hp} HP` : `${CLASSES[c.classId].name} ${levelFromXp(c.xp)}`}</small></div>`;
+      })
+      .join('');
+    const slots = Array.from(
+      { length: 4 - characters.length },
+      () =>
+        `<button class="empty-slot" data-action="roster" aria-label="An open party slot" title="An open party slot"><span>+</span></button>`,
+    ).join('');
+    const actions =
+      s.phase === 'hub'
+        ? `<div class="composition"><span class="${roles.includes('tank') ? 'ready' : 'missing'}">${icon('shield', 12)} ${roles.includes('tank') ? 'Tank' : 'No tank'}</span><span class="${roles.includes('healer') ? 'ready' : 'missing'}">${icon('heart', 12)} ${roles.includes('healer') ? 'Healer' : 'No healer'}</span></div><button data-action="loadout">${icon('sword', 14)} Manage loadout</button><button data-action="roster">${icon('companion', 14)} Browse companions</button>${p.unlockedPortals.includes(5) ? `<button data-action="portal">${icon('compass', 14)} Sanctuary portal</button>` : ''}<button class="primary" data-action="depart">${icon('stairs', 15)} Begin descent</button>`
+        : s.phase === 'safeRoom'
+          ? `<button class="primary" data-action="portal">${icon('compass', 15)} Return to the hub</button>`
+          : `<span class="supplies">${s.phase === 'combat' ? s.combat.resources.potions : s.run.resources.potions} potions · ${s.run.unbankedGold} gold</span><button data-action="journal">${icon('book', 14)} Floor journal</button>`;
     this.root.querySelector('#right')!.innerHTML =
-      `<section><div class="party-head"><h3>Your company</h3><span class="pill">${characters.length} / 4</span></div><div class="party-list">${characters
-        .map((c, i) => {
-          const fighter = party?.find((f) => f.id === c.id);
-          return `<div class="party-member">${avatar(c.classId)}<div class="details"><strong>${esc(c.name)}${i === 0 ? ' <small style="display:inline;color:var(--gold)">YOU</small>' : ''}</strong><small>${CLASSES[c.classId].name} · ${fighter ? `${fighter.hp}/${fighter.stats.hp} HP` : `Level ${levelFromXp(c.xp)}`}</small>${fighter ? `<div class="bar"><span style="width:${(fighter.hp / fighter.stats.hp) * 100}%"></span></div>` : ''}</div>${i > 0 && s.phase === 'hub' ? `<button class="subtle" data-action="dismiss" data-id="${c.id}" aria-label="Dismiss ${esc(c.name)}">${icon('close', 12)}</button>` : ''}</div>`;
-        })
-        .join(
-          '',
-        )}${Array.from({ length: 4 - characters.length }, () => `<button class="empty-slot" data-action="roster"><span>+</span><span>An open party slot</span></button>`).join('')}</div><div class="composition"><span class="${roles.includes('tank') ? 'ready' : 'missing'}">${icon('shield', 12)} ${roles.includes('tank') ? 'Tank ready' : 'Tank missing'}</span><span class="${roles.includes('healer') ? 'ready' : 'missing'}">${icon('heart', 12)} ${roles.includes('healer') ? 'Healer ready' : 'Healer missing'}</span></div></section>${s.phase === 'hub' ? `<section class="loadout-link"><button class="wide" data-action="loadout">${icon('sword', 15)} Manage loadout ${icon('arrow', 14)}</button></section><section class="community-link"><h3>Never descend alone</h3><p class="recruit-prompt">${icon('companion', 17)} Tap a wandering adventurer to meet them, or find an affordable companion below.</p><button class="wide" data-action="roster">Browse companions ${icon('arrow', 14)}</button></section>` : s.phase === 'floor' || s.phase === 'combat' ? `<section><span class="eyebrow right-title">Expedition supplies</span><p class="right-title" style="margin:12px 0 0">${s.phase === 'combat' ? s.combat.resources.potions : s.run.resources.potions} potions · ${s.run.unbankedGold} unbanked gold<br>${p.player.xp} XP earned</p></section>` : ''}<section class="depart">${s.phase === 'hub' ? `<button class="primary wide" data-action="depart">${icon('stairs', 17)} Begin descent ${icon('arrow', 16)}</button><p>Floors 1–4 · Sanctuary at floor 5</p>${p.unlockedPortals.includes(5) ? `<button class="wide" style="margin-top:10px" data-action="portal">${icon('compass', 16)} Sanctuary portal</button>` : ''}` : s.phase === 'safeRoom' ? `<button class="primary wide" data-action="portal">${icon('compass', 16)} Return to the hub</button><p>Portal unlocked. Your progress is safe.</p>` : `<button class="wide" data-action="journal">${icon('book', 16)} Floor journal</button><p>Wipe: keep XP, lose unbanked gold.</p>`}</section>`;
+      `<div class="party-list">${members}${slots}</div><div class="hud-actions">${actions}</div>`;
+  }
+  /** Names the hall room you just walked into. */
+  private roomBanner(name: string) {
+    const stage = this.root.querySelector('#stage');
+    if (!stage) return;
+    stage.querySelector('.room-banner')?.remove();
+    stage.insertAdjacentHTML(
+      'beforeend',
+      `<div class="room-banner" role="status">${esc(name)}</div>`,
+    );
+    clearTimeout(this.bannerTimer);
+    this.bannerTimer = window.setTimeout(() => stage.querySelector('.room-banner')?.remove(), 2400);
+    const title = this.root.querySelector('#hud-title');
+    if (title) title.textContent = name;
   }
   private renderStageChrome() {
     const s = this.state;
     if (s.phase === 'classSelect') return;
     const stage = this.root.querySelector('#stage')!;
-    stage
-      .querySelectorAll('.stage-heading,.stage-badge,.touch-controls,.safe-banner')
-      .forEach((e) => e.remove());
+    stage.querySelectorAll('.touch-controls,.safe-banner').forEach((e) => e.remove());
     const dungeon = s.phase === 'floor' || s.phase === 'combat';
-    const def = dungeon ? getFloor(s.floor.id) : undefined;
     stage.insertAdjacentHTML(
       'beforeend',
-      `<div class="stage-heading"><span class="eyebrow">${dungeon ? `Floor 0${s.floor.id}` : s.phase === 'safeRoom' ? 'Floor 05 · Safe room' : 'Floor 00 · Safe haven'}</span><h1>${def?.title ?? (s.phase === 'safeRoom' ? 'Stillwater Sanctuary' : 'The Gathering Hall')}</h1><p>${def?.subtitle ?? (s.phase === 'safeRoom' ? 'A quiet place, well earned.' : 'Even the bravest souls need good company.')}</p></div><div class="stage-badge">${icon(dungeon ? 'sword' : 'shield', 12)} ${dungeon ? 'EXPLORATION' : 'NO ENEMIES HERE'}</div><div class="touch-controls"><div class="dpad"><button data-dir="0,-1" aria-label="Move north">↑</button><button data-dir="-1,0" aria-label="Move west">←</button><button data-dir="0,1" aria-label="Move south">↓</button><button data-dir="1,0" aria-label="Move east">→</button></div>${dungeon ? `<button class="sneak-toggle ${this.sneak ? 'on' : ''}" data-action="sneak">Sneak</button>` : ''}</div>${s.phase === 'safeRoom' ? `<div class="safe-banner">${icon('compass', 32)}<span class="eyebrow" style="display:block;margin-top:14px">Checkpoint reached</span><h2>A moment of stillness.</h2><p>Your gold is banked. Your company has returned home. The way here will always be open.</p></div>` : ''}`,
+      `<div class="touch-controls"><div class="dpad"><button data-dir="0,-1" aria-label="Move north">↑</button><button data-dir="-1,0" aria-label="Move west">←</button><button data-dir="0,1" aria-label="Move south">↓</button><button data-dir="1,0" aria-label="Move east">→</button></div>${dungeon ? `<button class="sneak-toggle ${this.sneak ? 'on' : ''}" data-action="sneak">Sneak</button>` : ''}</div>${s.phase === 'safeRoom' ? `<div class="safe-banner">${icon('compass', 32)}<span class="eyebrow" style="display:block;margin-top:14px">Checkpoint reached</span><h2>A moment of stillness.</h2><p>Your gold is banked. Your company has returned home. The way here will always be open.</p></div>` : ''}`,
     );
     stage.querySelectorAll<HTMLElement>('[data-dir]').forEach((button) => {
       button.addEventListener('pointerdown', (e) => {
@@ -252,7 +377,7 @@ export class Controller {
       button.addEventListener('pointercancel', release);
     });
     this.root.querySelector('#stage-footer')!.innerHTML =
-      `<div class="key-hints"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move <span>·</span><kbd>E</kbd> interact ${dungeon ? '<span>·</span><kbd>Shift</kbd> sneak' : ''}</div><span class="floor-description muted" style="font-size:10px">${dungeon ? 'Tap the floor to move. Touch a patrol to fight.' : 'Tap an adventurer to meet them. Tap the floor to wander.'}</span><button data-action="${dungeon ? 'journal' : 'roster'}">${icon(dungeon ? 'book' : 'companion', 14)} ${dungeon ? 'Journal' : 'Companions'}</button>`;
+      `<div class="key-hints"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move <span>·</span><kbd>E</kbd> interact ${dungeon ? '<span>·</span><kbd>Shift</kbd> sneak' : ''}<span>·</span><kbd>M</kbd> map <span>·</span> ${dungeon ? 'Tap the floor to move. Touch a patrol to fight.' : 'Tap an adventurer to meet them.'}</div>`;
     this.renderInteraction();
   }
   private updateWorld() {
@@ -282,19 +407,21 @@ export class Controller {
       if (distance(p, def.clue) <= 1.5) return 'Read the rune tablet';
       const i = def.puzzlePoints.findIndex((pt) => distance(p, pt) <= 1.5);
       if (i >= 0) {
-        if (s.floor.puzzle.type === 'levers') return `Pull ${['Sun', 'Moon', 'Star'][i]} lever`;
-        if (s.floor.puzzle.type === 'braziers') return `Toggle brazier ${i + 1}`;
+        if (s.floor.puzzle.type === 'levers') return `Pull the ${def.puzzleLabels[i]} lever`;
+        if (s.floor.puzzle.type === 'braziers') return `Toggle the ${def.puzzleLabels[i]} brazier`;
         if (s.floor.puzzle.type === 'key')
           return s.floor.puzzle.guardDefeated
             ? 'Collect the brass key'
             : 'The Warden guards this key';
       }
     } else if (s.phase === 'hub') {
-      if (distance(this.hubPosition, { x: 17, z: 10 }) < 2) return 'Begin the descent';
-      if (distance(this.hubPosition, { x: 17, z: 2 }) < 2)
+      if (distance(this.hubPosition, HALL.stairs) < 2) return 'Begin the descent';
+      if (distance(this.hubPosition, HALL.portal) < 2.2)
         return s.progress.unlockedPortals.includes(5)
           ? 'Travel to sanctuary'
           : 'Sanctuary portal • not yet unlocked';
+      if (distance(this.hubPosition, HALL.wardrobe) < 2.4) return 'Enter the changing room';
+      if (distance(this.hubPosition, HALL.armory) < 2.4) return 'Manage your loadout';
       const nearest = this.nearestGhost();
       if (nearest) return `Meet ${nearest.character.name}`;
     } else if (s.phase === 'safeRoom') return 'Return to the Gathering Hall';
@@ -302,19 +429,28 @@ export class Controller {
   }
   private nearestGhost(): Ghost | undefined {
     if (!this.world) return;
-    return GHOSTS.filter((g) => !g.community).find(
-      (_, i) => distance(this.hubPosition, this.world!.ghostPoint(i, this.time)) < 1.8,
-    );
+    return GHOSTS.filter((g) => !g.community).find((g) => {
+      const at = this.world!.ghostPosition(g.id);
+      return at && distance(this.hubPosition, at) < 1.8;
+    });
   }
   private interact() {
     if (this.modal || this.state.phase === 'combat' || this.state.phase === 'classSelect') return;
     const s = this.state;
     if (s.phase === 'hub') {
-      if (distance(this.hubPosition, { x: 17, z: 10 }) < 2) {
+      if (distance(this.hubPosition, HALL.stairs) < 2) {
         this.depart();
         return;
       }
-      if (distance(this.hubPosition, { x: 17, z: 2 }) < 2) {
+      if (distance(this.hubPosition, HALL.wardrobe) < 2.4) {
+        this.enterChangingRoom();
+        return;
+      }
+      if (distance(this.hubPosition, HALL.armory) < 2.4) {
+        this.openLoadout();
+        return;
+      }
+      if (distance(this.hubPosition, HALL.portal) < 2.2) {
         if (s.progress.unlockedPortals.includes(5)) this.dispatch({ type: 'portal' });
         else this.toast('Reach floor 5 to awaken this portal.');
         return;
@@ -352,6 +488,16 @@ export class Controller {
       return;
     }
     this.dispatch({ type: 'interact' });
+  }
+  /** Saves, then walks through the wardrobe into the Paper Doll Studio. */
+  private enterChangingRoom() {
+    this.saveNow();
+    try {
+      sessionStorage.setItem(RETURN_KEY, 'changing');
+    } catch {
+      // Without session storage the hall simply starts at the entrance.
+    }
+    void this.saveQueue.then(() => location.assign('studio.html'));
   }
   private depart() {
     if (this.state.phase !== 'hub') return;
@@ -400,11 +546,7 @@ export class Controller {
     goal = { x: Math.round(goal.x), z: Math.round(goal.z) };
     const def = s.phase === 'floor' ? getFloor(s.floor.id) : undefined;
     const pass = (p: Point) =>
-      p.x >= 1 &&
-      p.x <= 19 &&
-      p.z >= 1 &&
-      p.z <= 11 &&
-      (def && s.phase === 'floor' ? canOccupy(def, s.floor, p) : true);
+      def && s.phase === 'floor' ? canOccupy(def, s.floor, p) : canStand(HALL_MAP, p);
     const interactable =
       def &&
       ((def.stairs.x === goal.x && def.stairs.z === goal.z) ||
@@ -448,7 +590,7 @@ export class Controller {
       const steps = Math.ceil(distance(a, b) / 0.1);
       for (let i = 1; i <= steps; i++) {
         const p = { x: a.x + ((b.x - a.x) * i) / steps, z: a.z + ((b.z - a.z) * i) / steps };
-        if (!pass(p) || (def && s.phase === 'floor' && !canOccupy(def, s.floor, p))) return false;
+        if (!pass(p)) return false;
       }
       return true;
     };
@@ -469,15 +611,22 @@ export class Controller {
       this.dispatch({ type: 'move', dx, dz, sneak: this.isSneaking() });
       return;
     }
-    const p = { x: this.hubPosition.x + dx, z: this.hubPosition.z + dz };
-    const next = {
-      x: Math.max(0.75, Math.min(19.25, p.x)),
-      z: Math.max(0.75, Math.min(11.25, p.z)),
-    };
+    const next = moveOnGrid(HALL_MAP, this.hubPosition, dx, dz);
     if (distance(next, this.hubPosition) > 0) {
+      const room = hallRoomAt(this.hubPosition)?.name;
       this.hubPosition = next;
       this.updateWorld();
       this.renderInteraction();
+      const entered = hallRoomAt(next)?.name;
+      if (entered !== room && this.state.phase === 'hub') {
+        this.root.querySelector('#location-name')!.textContent =
+          `The Gathering Hall · ${entered ?? 'Passage'}`;
+        if (entered) this.roomBanner(entered);
+      }
+      if (performance.now() - this.lastMap > 150) {
+        this.updateMinimap();
+        this.lastMap = performance.now();
+      }
     }
   }
   private isSneaking() {
@@ -540,7 +689,9 @@ export class Controller {
         }
       }
     } else this.motionTime = 0;
-    this.world?.animate(this.time);
+    if (this.world) this.world.animate(this.time);
+    else pumpDolls();
+    this.combatStage?.draw(delta);
     requestAnimationFrame((t) => this.frame(t));
   }
   private openModal(html: string) {
@@ -588,7 +739,7 @@ export class Controller {
     const canHire =
       this.state.phase === 'hub' && !hired && !full && this.state.progress.gold >= g.price;
     this.openModal(
-      `<div class="ghost-title">${avatar(g.character.classId)}<div><span class="eyebrow">${g.community ? 'Community companion' : `Offline snapshot of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${CLASSES[g.character.classId].name} · ${g.style}</small></div></div><blockquote>“${g.dialogue}”</blockquote><div class="stat-grid">${[
+      `<div class="ghost-title">${characterAvatar(g.character, false)}<div><span class="eyebrow">${g.community ? 'Community companion' : `Offline snapshot of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${CLASSES[g.character.classId].name} · ${g.style}</small></div></div><blockquote>“${g.dialogue}”</blockquote><div class="stat-grid">${[
         ['HP', stats.hp],
         ['ATK', stats.atk],
         ['DEF', stats.def],
@@ -663,7 +814,7 @@ export class Controller {
     if (s.phase !== 'floor' && s.phase !== 'combat') return;
     const def = getFloor(s.floor.id);
     this.openModal(
-      `<span class="eyebrow">Floor ${def.id} · Field notes</span><h2>${def.title}</h2><p>${this.puzzleDescription()}</p><div class="notice">${s.floor.clueRead ? def.hint : 'A rune tablet is marked by a pale blue stone on your map. Walk up to it and interact to read the clue.'}</div><p class="muted" style="margin-top:18px">${s.floor.puzzle.type === 'levers' ? `Lever order entered: ${s.floor.puzzle.progress} / 3. Sun, Moon and Star are arranged from west to east.` : s.floor.puzzle.type === 'braziers' ? 'Braziers are numbered from west to east, then north: 1 through 5.' : s.floor.puzzle.type === 'plates' ? 'Stand behind a block and move toward it to push. You can reset the stones if they get stuck.' : 'The key pedestal is in the Warden’s northern chamber.'}</p>${s.floor.puzzle.type === 'plates' ? '<button data-action="restart-puzzle">Reset stones to starting positions</button>' : ''}<div class="divider"></div><p class="muted">Hold Shift or toggle Sneak to reduce detection. Shadow Cloak reduces detection a further 40%. Tap the floor to walk; enemies may interrupt.</p><button class="primary wide" data-action="close">Back to the expedition ${icon('arrow', 15)}</button>`,
+      `<span class="eyebrow">Floor ${def.id} · Field notes</span><h2>${def.title}</h2><p>${this.puzzleDescription()}</p><div class="notice">${s.floor.clueRead ? def.hint : 'A rune tablet is marked by a pale blue stone on your map. Walk up to it and interact to read the clue.'}</div><p class="muted" style="margin-top:18px">${s.floor.puzzle.type === 'levers' ? `Lever order entered: ${s.floor.puzzle.progress} / ${s.floor.puzzle.sequence.length}. ` : s.floor.puzzle.type === 'braziers' ? `Lit: ${s.floor.puzzle.lit.filter(Boolean).length} / ${s.floor.puzzle.lit.length}. ` : ''}${def.notes}</p>${s.floor.puzzle.type === 'plates' ? '<button data-action="restart-puzzle">Reset stones (you return to the vault door)</button>' : ''}<div class="divider"></div><p class="muted">Hold Shift or toggle Sneak to reduce detection. Shadow Cloak reduces detection a further 40%. Tap the floor to walk; enemies may interrupt.</p><button class="primary wide" data-action="close">Back to the expedition ${icon('arrow', 15)}</button>`,
     );
   }
   private renderCombat() {
@@ -674,6 +825,7 @@ export class Controller {
     const c = s.combat,
       actor = activeFighter(c),
       isPlayer = actor.player;
+    this.combatStage ??= new CombatStage(c, s.progress, s.floor.id, (id) => this.selectTarget(id));
     const player = c.fighters.find((f) => f.player)!;
     const button = (
       type: 'attack' | 'skill' | 'potion' | 'defend' | 'flee',
@@ -700,23 +852,49 @@ export class Controller {
     const enemies = c.fighters.filter((f) => f.team === 'enemy' && f.hp > 0);
     if (!c.fighters.some((f) => f.hp > 0 && f.id === this.selectedTarget))
       this.selectedTarget = enemies[0]?.id ?? '';
-    const fighterHtml = (f: Fighter) =>
-      `<button class="fighter ${actor.id === f.id ? 'active' : ''} ${f.hp <= 0 ? 'dead' : ''} ${this.selectedTarget === f.id ? 'targeted' : ''}" data-action="target" data-id="${f.id}" ${f.hp <= 0 ? 'disabled' : ''}>${f.team === 'enemy' ? `<span class="avatar hostile-avatar"><img src="${(enemyTexture(Object.keys(ENEMIES).find((type) => ENEMIES[type].name === f.name) ?? 'cultist').image as HTMLCanvasElement).toDataURL()}" alt=""></span>` : avatar(f.classId)}<div class="fighter-info"><strong>${esc(f.name)} ${f.boss ? '♛' : ''}${f.player ? ' · YOU' : ''}</strong><div class="bar"><span style="width:${(f.hp / f.stats.hp) * 100}%"></span></div><small>${f.hp} / ${f.stats.hp} HP</small><div class="bar mp"><span style="width:${f.stats.mp ? (f.mp / f.stats.mp) * 100 : 0}%"></span></div><small>${f.mp} MP ${f.defending ? '· Guarding' : ''}${f.tauntTurns ? '· Taunting' : ''}</small></div></button>`;
+    // Turn order, starting with whoever acts now; the fallen go to the end.
+    const order = [...c.order.slice(c.cursor), ...c.order.slice(0, c.cursor)]
+      .map((id) => c.fighters.find((f) => f.id === id)!)
+      .filter(Boolean);
+    const lineup = [...order.filter((f) => f.hp > 0), ...order.filter((f) => f.hp <= 0)];
+    const chip = (f: Fighter) => {
+      const portrait =
+        f.team === 'enemy'
+          ? `<span class="avatar hostile-avatar"><img src="${(enemyTexture(Object.keys(ENEMIES).find((type) => ENEMIES[type].name === f.name) ?? 'cultist').image as HTMLCanvasElement).toDataURL()}" alt=""></span>`
+          : characterAvatar(
+              f.player ? s.progress.player : { ...f, appearance: undefined },
+              f.player,
+            );
+      const status = [f.defending ? 'Guarding' : '', f.tauntTurns ? 'Taunting' : '']
+        .filter(Boolean)
+        .join(', ');
+      return `<button class="fighter turn-chip ${f.team} ${actor.id === f.id ? 'active' : ''} ${f.hp <= 0 ? 'dead' : ''} ${this.selectedTarget === f.id ? 'targeted' : ''}" data-action="target" data-id="${f.id}" ${f.hp <= 0 ? 'disabled' : ''} aria-label="${esc(f.name)}${f.player ? ' (you)' : ''}, ${f.hp} of ${f.stats.hp} HP, ${f.mp} MP${status ? `, ${status}` : ''}" title="${esc(f.name)}${f.boss ? ' ♛' : ''} · ${f.hp}/${f.stats.hp} HP · ${f.mp} MP${status ? ` · ${status}` : ''}">${portrait}<span class="chip-name">${esc(f.player ? 'You' : f.name.split(' ')[0])}</span><span class="bar"><span style="width:${(f.hp / f.stats.hp) * 100}%"></span></span></button>`;
+    };
     stage.insertAdjacentHTML(
       'beforeend',
-      `<section class="combat-overlay" aria-label="Combat"><div class="combat-heading"><div><span class="eyebrow">Floor ${s.floor.id} · Encounter</span><h2>${c.fighters.some((f) => f.boss) ? 'The Key Warden' : 'Stand together.'}</h2></div><span class="pill">ROUND ${c.round}</span></div><div class="turn-banner">${icon('sword', 14)} ${isPlayer ? 'Your turn. Choose an action and a target.' : `${esc(actor.name)} is acting…`}</div><div class="combatants"><div class="combat-team">${c.fighters
-        .filter((f) => f.team === 'party')
-        .map(fighterHtml)
-        .join('')}</div><div class="combat-team enemy-team">${c.fighters
-        .filter((f) => f.team === 'enemy')
-        .map(fighterHtml)
-        .join('')}</div></div><div class="combat-log" aria-live="polite">${c.messages
-        .slice(-5)
+      `<section class="combat-overlay compact" aria-label="Combat"><div class="combat-top"><div class="combat-title"><span class="eyebrow">Floor ${s.floor.id} · Round ${c.round}</span><h2>${c.fighters.some((f) => f.boss) ? 'The Key Warden' : 'Stand together.'}</h2></div><div class="turn-strip" aria-label="Turn order">${lineup.map(chip).join('')}</div></div><div class="battlefield"></div><div class="combat-bottom"><div class="combat-log" aria-live="polite">${c.messages
+        .slice(-4)
         .map((m) => `<p>${esc(m)}</p>`)
         .join(
           '',
-        )}</div>${queueHtml}<div class="combat-menu">${button('attack', `${icon('sword', 14)} Attack`)}${button('skill', `${CLASSES[player.classId].skill} · ${CLASSES[player.classId].cost}`, player.mp < CLASSES[player.classId].cost)}${button('potion', `Potion (${c.resources.potions})`, c.resources.potions <= 0)}${button('defend', `${icon('shield', 14)} Defend`)}${button('flee', 'Flee')}</div><small style="font-size:9px">Select an enemy for attacks, or an ally for Mend and potions. Choose another action or target to replace your queue. Flee: 50%, or guaranteed with an unused Smoke Bomb.</small></section>`,
+        )}</div><div class="combat-controls"><div class="turn-banner">${icon('sword', 14)} ${isPlayer ? 'Your turn. Pick a target on the field or in the turn order, then an action.' : `${esc(actor.name)} is acting…`}</div>${queueHtml}<div class="combat-menu">${button('attack', `${icon('sword', 14)} Attack`)}${button('skill', `${CLASSES[player.classId].skill} · ${CLASSES[player.classId].cost}`, player.mp < CLASSES[player.classId].cost)}${button('potion', `Potion (${c.resources.potions})`, c.resources.potions <= 0)}${button('defend', `${icon('shield', 14)} Defend`)}${button('flee', 'Flee')}</div></div></div></section>`,
     );
+    this.combatStage.setFighters(c.fighters);
+    stage.querySelector('.battlefield')!.append(this.combatStage.canvas);
+    this.combatStage.selected = this.selectedTarget;
+  }
+  private selectTarget(id: string) {
+    this.selectedTarget = id;
+    if (this.state.phase === 'combat' && this.queuedAction && 'target' in this.queuedAction) {
+      const friendly =
+        this.queuedAction.type === 'item' ||
+        (this.queuedAction.type === 'skill' && this.state.progress.player.classId === 'cleric');
+      const target = this.state.combat.fighters.find(
+        (f) => f.id === id && f.hp > 0 && f.team === (friendly ? 'party' : 'enemy'),
+      );
+      if (target) this.queuedAction = { ...this.queuedAction, target: id };
+    }
+    this.renderCombat();
   }
   private combatAction(type: Action['type']) {
     const s = this.state;
@@ -758,6 +936,21 @@ export class Controller {
       case 'select-class':
         this.selectedClass = id as ClassId;
         this.renderClassSelect();
+        break;
+      case 'select-race':
+        this.selectedRace = id as Race;
+        this.renderClassSelect();
+        break;
+      case 'select-sex':
+        this.selectedSex = id as Sex;
+        this.renderClassSelect();
+        break;
+      case 'toggle-hud':
+        this.hudCollapsed = !this.hudCollapsed;
+        this.renderLeft();
+        break;
+      case 'changing-room':
+        this.enterChangingRoom();
         break;
       case 'close':
         this.closeModal();
@@ -820,17 +1013,7 @@ export class Controller {
         el.classList.toggle('on', this.sneak);
         break;
       case 'target':
-        this.selectedTarget = id;
-        if (this.state.phase === 'combat' && this.queuedAction && 'target' in this.queuedAction) {
-          const friendly =
-            this.queuedAction.type === 'item' ||
-            (this.queuedAction.type === 'skill' && this.state.progress.player.classId === 'cleric');
-          const target = this.state.combat.fighters.find(
-            (f) => f.id === id && f.hp > 0 && f.team === (friendly ? 'party' : 'enemy'),
-          );
-          if (target) this.queuedAction = { ...this.queuedAction, target: id };
-        }
-        this.renderCombat();
+        this.selectTarget(id);
         break;
       case 'cancel-queue':
         this.queuedAction = undefined;
@@ -906,7 +1089,7 @@ export class Controller {
       this.state = transition(this.state, { type: 'reset' });
       this.path = [];
       this.queuedAction = undefined;
-      this.hubPosition = { x: 10, z: 10 };
+      this.hubPosition = { ...HALL.spawn };
       this.render();
       this.toast('Game reset. A new journey awaits.');
     } catch (error) {

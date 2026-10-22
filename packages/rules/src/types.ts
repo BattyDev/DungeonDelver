@@ -1,5 +1,12 @@
 export type ClassId = 'knight' | 'cleric' | 'rogue';
 export type Role = 'tank' | 'healer' | 'dps';
+export type Race = 'human' | 'orc' | 'elf' | 'dwarf' | 'gnome';
+export type Sex = 'F' | 'M';
+/** Body chosen at character creation; it only affects how the character is drawn. */
+export interface Appearance {
+  race: Race;
+  sex: Sex;
+}
 export type Slot = 'weapon' | 'offhand' | 'armor' | 'trinket';
 export interface Stats {
   hp: number;
@@ -40,6 +47,7 @@ export interface Character {
   xp: number;
   loadout: Loadout;
   color: string;
+  appearance?: Appearance;
 }
 export type Action =
   | { type: 'attack'; target: string }
@@ -149,8 +157,14 @@ export interface FloorDef {
   stairs: Point;
   puzzle: PuzzleState;
   puzzlePoints: Point[];
+  /** Names for levers or braziers, in puzzlePoints order. */
+  puzzleLabels: string[];
   clue: Point;
   hint: string;
+  /** Where resetting the puzzle puts the player; the spawn when absent. */
+  restart?: Point;
+  /** Journal guidance shown before and after the clue is read. */
+  notes: string;
   patrols: PatrolDef[];
 }
 export interface PatrolState {
@@ -201,7 +215,7 @@ export interface SaveData {
   state: GameState;
 }
 export type GameCommand =
-  | { type: 'newGame'; name: string; classId: ClassId; seed: number }
+  | { type: 'newGame'; name: string; classId: ClassId; seed: number; appearance?: Appearance }
   | { type: 'hire'; ghostId: string }
   | { type: 'dismiss'; ghostId: string }
   | { type: 'equip'; itemId: string }

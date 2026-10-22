@@ -64,12 +64,12 @@ describe('progression and exploration', () => {
   it('detection respects walls, stealth and flee grace', () => {
     const def = getFloor(1),
       f = createFloor(def);
-    f.position = { x: 5, z: 7 };
+    f.position = { x: 3, z: 8 };
     expect(encounterAt(def, f, false, false)).toBe('moss');
     expect(encounterAt(def, f, true, true)).toBeUndefined();
     f.patrols[0].pauseTicks = 90;
     expect(encounterAt(def, f, false, false)).toBeUndefined();
-    expect(lineOfSight(def, { x: 8, z: 1 }, { x: 10, z: 1 })).toBe(false);
+    expect(lineOfSight(def, { x: 10, z: 1 }, { x: 14, z: 1 })).toBe(false);
   });
   it('wipe keeps XP and banked gold and dismisses hires', () => {
     let s = transition(game(), { type: 'hire', ghostId: 'ghost-1' });
@@ -104,7 +104,7 @@ describe('progression and exploration', () => {
     let s = transition(game(), { type: 'startRun' });
     if (s.phase !== 'floor') throw Error();
     s.floor = createFloor(getFloor(4));
-    s.floor.position = { x: 18, z: 3 };
+    s.floor.position = { x: 38, z: 3 };
     s.floor.puzzle = { type: 'key', guardDefeated: true, collected: true };
     s.run.unbankedGold = 50;
     const safe = transition(s, { type: 'interact' });

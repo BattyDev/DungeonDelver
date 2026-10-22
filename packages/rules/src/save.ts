@@ -1,4 +1,4 @@
-import { CLASS_IDS } from './classes';
+import { CLASS_IDS, RACE_IDS, SEX_IDS } from './classes';
 import { ITEMS, SLOTS } from './items';
 import { getFloor } from './content/floors';
 import { walkable } from './floors/pressure-plates';
@@ -49,6 +49,10 @@ function character(x: unknown): boolean {
     CLASS_IDS.includes(x.classId as never) &&
     integer(x.xp) &&
     text(x.color) &&
+    (x.appearance === undefined ||
+      (object(x.appearance) &&
+        RACE_IDS.includes(x.appearance.race as never) &&
+        SEX_IDS.includes(x.appearance.sex as never))) &&
     object(x.loadout) &&
     SLOTS.every((slot) =>
       ITEMS.some(

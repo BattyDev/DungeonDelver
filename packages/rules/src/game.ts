@@ -85,7 +85,10 @@ export function transition(state: GameState, command: GameCommand): GameState {
   if (command.type === 'reset') return { phase: 'classSelect' };
   if (command.type === 'newGame')
     return state.phase === 'classSelect'
-      ? { phase: 'hub', progress: newProgress(command.name, command.classId, command.seed) }
+      ? {
+          phase: 'hub',
+          progress: newProgress(command.name, command.classId, command.seed, command.appearance),
+        }
       : state;
   if (state.phase === 'classSelect') return state;
   if (command.type === 'hire') {
@@ -196,7 +199,7 @@ export function transition(state: GameState, command: GameCommand): GameState {
       a = command.action;
     if (a.type === 'restart' && p.type === 'plates') {
       s.floor.puzzle = clone(def.puzzle);
-      s.floor.position = { ...def.spawn };
+      s.floor.position = { ...(def.restart ?? def.spawn) };
     } else if (
       a.type === 'lever' &&
       p.type === 'levers' &&

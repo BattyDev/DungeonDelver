@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { CLASSES } from '@delver/rules';
-import type { ClassId } from '@delver/rules';
+import { pixelate } from './pixels';
 
 const cache = new Map<string, THREE.CanvasTexture>();
 type Pen = CanvasRenderingContext2D;
@@ -23,6 +22,7 @@ function texture(key: string, draw: (c: Pen) => void): THREE.CanvasTexture {
   const found = cache.get(key);
   if (found) return found;
   const canvas = document.createElement('canvas');
+  canvas.dataset.key = key;
   canvas.width = 160;
   canvas.height = 220;
   const c = canvas.getContext('2d')!;
@@ -42,225 +42,6 @@ function texture(key: string, draw: (c: Pen) => void): THREE.CanvasTexture {
   return result;
 }
 
-/** Ordinary adventurers: skin, clothing, separate legs, and readable class equipment. */
-export function spriteTexture(classId: ClassId, color: string): THREE.CanvasTexture {
-  return texture(`adventurer-${classId}-${color}`, (c) => {
-    polygon(
-      c,
-      [
-        [49, 100],
-        [111, 100],
-        [127, 169],
-        [33, 169],
-      ],
-      classId === 'rogue' ? '#434458' : '#354454',
-    );
-    c.fillStyle = '#35404b';
-    c.fillRect(55, 151, 20, 42);
-    c.fillRect(86, 151, 20, 42);
-    c.fillStyle = '#252b30';
-    c.fillRect(49, 187, 28, 16);
-    c.fillRect(84, 187, 29, 16);
-    polygon(
-      c,
-      [
-        [52, 99],
-        [108, 99],
-        [115, 157],
-        [45, 157],
-      ],
-      color,
-    );
-    polygon(
-      c,
-      [
-        [49, 104],
-        [38, 110],
-        [30, 147],
-        [44, 152],
-        [59, 118],
-      ],
-      color,
-    );
-    polygon(
-      c,
-      [
-        [110, 104],
-        [121, 110],
-        [132, 147],
-        [118, 152],
-        [102, 118],
-      ],
-      color,
-    );
-    ellipse(c, 37, 151, 8, 8, '#d7ab85');
-    ellipse(c, 125, 151, 8, 8, '#d7ab85');
-    ellipse(c, 80, 71, 27, 30, '#d7ab85');
-    if (classId === 'knight') {
-      polygon(
-        c,
-        [
-          [50, 66],
-          [55, 43],
-          [80, 31],
-          [105, 43],
-          [111, 66],
-          [98, 62],
-          [80, 53],
-          [62, 62],
-        ],
-        '#acbdc5',
-      );
-      c.strokeStyle = '#e8edf0';
-      c.lineWidth = 3;
-      c.beginPath();
-      c.moveTo(80, 38);
-      c.lineTo(80, 56);
-      c.stroke();
-      c.strokeStyle = '#172127';
-      c.lineWidth = 4;
-      polygon(
-        c,
-        [
-          [22, 119],
-          [43, 111],
-          [63, 119],
-          [58, 156],
-          [43, 171],
-          [26, 156],
-        ],
-        '#6c8b98',
-      );
-      c.strokeStyle = '#e5ba72';
-      c.beginPath();
-      c.moveTo(43, 120);
-      c.lineTo(43, 155);
-      c.moveTo(30, 135);
-      c.lineTo(55, 135);
-      c.stroke();
-      c.strokeStyle = '#172127';
-      polygon(
-        c,
-        [
-          [122, 149],
-          [122, 86],
-          [128, 76],
-          [134, 86],
-          [134, 149],
-        ],
-        '#dce3df',
-      );
-      c.fillStyle = '#9d7854';
-      c.fillRect(119, 145, 18, 6);
-    } else if (classId === 'cleric') {
-      polygon(
-        c,
-        [
-          [52, 122],
-          [108, 122],
-          [116, 187],
-          [44, 187],
-        ],
-        color,
-      );
-      polygon(
-        c,
-        [
-          [60, 103],
-          [80, 124],
-          [99, 103],
-          [102, 119],
-          [80, 141],
-          [57, 119],
-        ],
-        '#f3e5c2',
-      );
-      polygon(
-        c,
-        [
-          [50, 56],
-          [59, 34],
-          [80, 25],
-          [101, 34],
-          [110, 56],
-        ],
-        '#f3e5c2',
-      );
-      c.fillStyle = color;
-      c.fillRect(76, 33, 8, 20);
-      c.fillRect(69, 40, 22, 6);
-      c.strokeStyle = '#b68e62';
-      c.lineWidth = 7;
-      c.beginPath();
-      c.moveTo(130, 84);
-      c.lineTo(130, 198);
-      c.stroke();
-      c.strokeStyle = '#172127';
-      c.lineWidth = 4;
-      ellipse(c, 130, 78, 12, 13, '#e3c780');
-      c.fillStyle = '#e7ebd8';
-      c.fillRect(52, 143, 21, 29);
-    } else {
-      polygon(
-        c,
-        [
-          [49, 65],
-          [54, 41],
-          [80, 29],
-          [106, 41],
-          [112, 65],
-          [96, 55],
-          [80, 48],
-          [63, 55],
-        ],
-        '#4a405a',
-      );
-      polygon(
-        c,
-        [
-          [53, 80],
-          [107, 80],
-          [100, 100],
-          [60, 100],
-        ],
-        '#4a405a',
-      );
-      polygon(
-        c,
-        [
-          [29, 151],
-          [18, 115],
-          [39, 137],
-        ],
-        '#e2e5e1',
-      );
-      polygon(
-        c,
-        [
-          [130, 151],
-          [143, 115],
-          [121, 137],
-        ],
-        '#e2e5e1',
-      );
-    }
-    c.fillStyle = '#252a2c';
-    c.fillRect(66, 69, 6, 5);
-    c.fillRect(88, 69, 6, 5);
-    c.fillStyle = '#5c493b';
-    c.fillRect(73, 85, 14, 3);
-    c.fillStyle = '#443c35';
-    c.fillRect(48, 151, 64, 8);
-    c.fillStyle = '#e5ba72';
-    c.fillRect(74, 150, 12, 10);
-    c.fillStyle = '#233638';
-    c.font = 'bold 22px Georgia';
-    c.textAlign = 'center';
-    c.fillText(CLASSES[classId].glyph, 80, 145);
-  });
-}
-
-/** Hostiles have their own creature silhouettes, independent of combat-role class IDs. */
 export function enemyTexture(type: string): THREE.CanvasTexture {
   return texture(`enemy-${type}`, (c) => {
     switch (type) {
@@ -567,13 +348,17 @@ export function enemyTexture(type: string): THREE.CanvasTexture {
     }
   });
 }
-function billboard(map: THREE.CanvasTexture): THREE.Sprite {
+/** Enemies are drawn smooth, then pixelated to sit with the pixel-art world and characters. */
+export function makeEnemySprite(type: string): THREE.Sprite {
   const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }),
+    new THREE.SpriteMaterial({
+      map: pixelate(enemyTexture(type).image as HTMLCanvasElement, 44),
+      transparent: true,
+      alphaTest: 0.5,
+    }),
   );
+  // Stand on the contact shadow near the bottom of the drawing.
+  sprite.center.set(0.5, 12 / 220);
   sprite.scale.set(1.25, 1.72, 1);
   return sprite;
 }
-export const makeSprite = (classId: ClassId, color: string): THREE.Sprite =>
-  billboard(spriteTexture(classId, color));
-export const makeEnemySprite = (type: string): THREE.Sprite => billboard(enemyTexture(type));
