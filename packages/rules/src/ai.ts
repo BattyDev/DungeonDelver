@@ -76,12 +76,12 @@ export function chooseAction(state: CombatState): { action: Action; seed: number
   let w = { ...(count >= 5 ? learned : actor.profile.defaults) };
   if (
     count < 5 &&
-    actor.classId === 'cleric' &&
+    actor.classId === 'healer' &&
     friends[0].hp / friends[0].stats.hp < actor.profile.healingThreshold &&
     canSkill
   )
     w = weights(1, 30, 0, 1);
-  if (!canSkill || (actor.classId === 'cleric' && friends[0].hp >= friends[0].stats.hp))
+  if (!canSkill || (actor.classId === 'healer' && friends[0].hp >= friends[0].stats.hp))
     w.skill = 0;
   if (
     actor.team === 'enemy' ||
@@ -102,7 +102,7 @@ export function chooseAction(state: CombatState): { action: Action; seed: number
       : picked.value === 'item'
         ? { type: 'item', target: ally.id }
         : picked.value === 'skill'
-          ? { type: 'skill', target: actor.classId === 'cleric' ? ally.id : target.id }
+          ? { type: 'skill', target: actor.classId === 'healer' ? ally.id : target.id }
           : { type: 'attack', target: target.id };
   return { action, seed: picked.seed };
 }

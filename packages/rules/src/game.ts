@@ -1,12 +1,12 @@
 import { clone } from './clone';
-import { CLASSES } from './classes';
+import { CLASSES, RACE_IDS, SEX_IDS } from './classes';
 import { ITEMS, defaultLoadout } from './items';
 import { GHOSTS } from './content/ghosts';
 import { getFloor } from './content/floors';
 import { createEnemy } from './content/enemies';
 import { activeFighter, resolveTurn, startCombat } from './combat';
 import { chooseAction } from './ai';
-import { endRun, newProgress, startRun, syncParty } from './progression';
+import { endRun, newProgress, recoverAfterVictory, startRun, syncParty } from './progression';
 import { createFloor, distance, encounterAt, moveOnFloor, tickPatrols } from './floors/exploration';
 import { pullLever } from './floors/lever-order';
 import { toggleBrazier } from './floors/braziers';
@@ -14,13 +14,13 @@ import { keyHunt } from './floors/key-hunt';
 import { isSolved } from './floors/puzzles';
 import type { GameState, GameCommand } from './types';
 type Exploring = Extract<GameState, { phase: 'floor' }>;
-function encounter(s: Exploring, sneak: boolean): GameState {
+function encounter(s: Exploring, sprint: boolean): GameState {
   const def = getFloor(s.floor.id);
   const id = encounterAt(
     def,
     s.floor,
     s.run.party.some((f) => f.effects.includes('stealth')),
-    sneak,
+    sprint,
   );
   if (!id) return s;
   const p = def.patrols.find((p) => p.id === id)!;
@@ -71,7 +71,7 @@ function settle(s: Extract<GameState, { phase: 'combat' }>): GameState {
     };
     run.unbankedGold += enemies.reduce((n, f) => n + f.gold, 0);
     // Small encounter recovery keeps the four-floor expedition viable without a shop.
-    run.party = run.party.map((f) => ({ ...f, mp: Math.min(f.stats.mp, f.mp + 4) }));
+    run.party = recoverAfterVictory(run.party);
     if (
       getFloor(floor.id).patrols.find((p) => p.id === patrol.id)!.boss &&
       floor.puzzle.type === 'key'
@@ -85,7 +85,10 @@ export function transition(state: GameState, command: GameCommand): GameState {
   if (command.type === 'reset') return { phase: 'classSelect' };
   if (command.type === 'newGame')
     return state.phase === 'classSelect'
-      ? { phase: 'hub', progress: newProgress(command.name, command.classId, command.seed) }
+      ? {
+          phase: 'hub',
+          progress: newProgress(command.name, command.classId, command.seed, command.appearance),
+        }
       : state;
   if (state.phase === 'classSelect') return state;
   if (command.type === 'hire') {
@@ -129,6 +132,18 @@ export function transition(state: GameState, command: GameCommand): GameState {
           ...state.progress.player,
           loadout: { ...state.progress.player.loadout, [item.slot]: item.id },
         },
+      },
+    };
+  }
+  if (command.type === 'changeAppearance') {
+    const { race, sex } = command.appearance ?? {};
+    // Like class and gear, a new look is chosen in the hub, and only from known bodies.
+    if (state.phase !== 'hub' || !RACE_IDS.includes(race) || !SEX_IDS.includes(sex)) return state;
+    return {
+      ...state,
+      progress: {
+        ...state.progress,
+        player: { ...state.progress.player, appearance: { race, sex } },
       },
     };
   }
@@ -178,9 +193,9 @@ export function transition(state: GameState, command: GameCommand): GameState {
   const s = clone(state),
     def = getFloor(s.floor.id);
   if (command.type === 'tick') {
-    s.floor = tickPatrols(def, s.floor);
+    s.floor = tickPatrols(def, s.floor, command.sprint);
     s.run.floors[s.floor.id] = s.floor;
-    return encounter(s, command.sneak);
+    return encounter(s, command.sprint);
   }
   if (command.type === 'move') {
     const { dx, dz } = command;
@@ -188,15 +203,17 @@ export function transition(state: GameState, command: GameCommand): GameState {
     if (floor === s.floor) return state;
     s.floor = floor;
     s.run.floors[s.floor.id] = s.floor;
-    return encounter(s, !!command.sneak);
+    return encounter(s, !!command.sprint);
   }
   if (command.type === 'puzzle') {
     // All puzzle interactions require proximity. Boss progress comes only from combat settlement.
     const p = s.floor.puzzle,
       a = command.action;
-    if (a.type === 'restart' && p.type === 'plates') {
+    if (a.type === 'restart' && p.type !== 'key') {
+      // Any puzzle can be put back to its start, so no floor can soft-lock. Stones need the
+      // player out of the way; flames and levers leave them where they stand.
       s.floor.puzzle = clone(def.puzzle);
-      s.floor.position = { ...def.spawn };
+      if (p.type === 'plates') s.floor.position = { ...(def.restart ?? def.spawn) };
     } else if (
       a.type === 'lever' &&
       p.type === 'levers' &&

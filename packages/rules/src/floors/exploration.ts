@@ -108,24 +108,51 @@ export function encounterAt(
   def: FloorDef,
   state: FloorState,
   stealth: boolean,
-  sneak: boolean,
+  sprint: boolean,
 ): string | undefined {
   return state.patrols.find((p) => {
     if (p.defeated || p.pauseTicks > 0) return false;
     const source = def.patrols.find((d) => d.id === p.id)!;
-    const radius = source.radius * (stealth ? 0.6 : 1) * (sneak ? 0.6 : 1);
+    const radius = source.radius * (stealth ? 0.6 : 1) * (sprint ? SPRINT_NOISE : 1);
     return (
       distance(state.position, p.position) <= Math.max(0.65, radius) &&
       lineOfSight(def, state.position, p.position)
     );
   })?.id;
 }
-export function tickPatrols(def: FloorDef, state: FloorState): FloorState {
+/** Sprinting is loud: patrols notice you from farther away... */
+export const SPRINT_NOISE = 1.6;
+/** ...and any that can see you this close leave their route to come at you. */
+export const CHASE_RANGE = 6.5;
+const CHASE_STEP = 0.2,
+  PATROL_STEP = 0.11;
+const toward = (from: Point, to: Point, step: number): Point => {
+  const d = distance(from, to);
+  if (d <= step || !d) return { ...to };
+  return { x: from.x + ((to.x - from.x) / d) * step, z: from.z + ((to.z - from.z) / d) * step };
+};
+export function tickPatrols(def: FloorDef, state: FloorState, sprint = false): FloorState {
   return {
     ...state,
     patrols: state.patrols.map((p) => {
       if (p.defeated) return p;
       if (p.pauseTicks > 0) return { ...p, pauseTicks: p.pauseTicks - 1 };
+      if (
+        sprint &&
+        distance(p.position, state.position) <= CHASE_RANGE &&
+        lineOfSight(def, p.position, state.position)
+      )
+        return {
+          ...p,
+          home: p.home ?? { ...p.position },
+          position: toward(p.position, state.position, CHASE_STEP),
+        };
+      // After a chase, retrace to where the route was left before walking it again.
+      if (p.home) {
+        const position = toward(p.position, p.home, PATROL_STEP);
+        const { home, ...rest } = p;
+        return distance(position, home) < 0.01 ? { ...rest, position } : { ...p, position };
+      }
       const path = def.patrols.find((d) => d.id === p.id)!.path;
       let waypoint = p.waypoint;
       let target = path[waypoint];
@@ -134,7 +161,7 @@ export function tickPatrols(def: FloorDef, state: FloorState): FloorState {
         target = path[waypoint];
       }
       const d = distance(p.position, target);
-      const step = Math.min(0.11, d);
+      const step = Math.min(PATROL_STEP, d);
       return {
         ...p,
         waypoint,

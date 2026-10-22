@@ -4,7 +4,7 @@ import { defaultLoadout } from './items';
 import { createEnemy } from './content/enemies';
 import { chooseAction, learn, roleProfile } from './ai';
 import type { ClassId, CombatState } from './types';
-const fighter = (classId: ClassId = 'rogue', alternate = false) =>
+const fighter = (classId: ClassId = 'samurai', alternate = false) =>
   createFighter(
     {
       id: 'p',
@@ -18,7 +18,7 @@ const fighter = (classId: ClassId = 'rogue', alternate = false) =>
     1,
     true,
   );
-const battle = (classId: ClassId = 'rogue', alternate = false) =>
+const battle = (classId: ClassId = 'samurai', alternate = false) =>
   startCombat([fighter(classId, alternate)], [createEnemy('slime', 'e', 1)], 42, {
     potions: 2,
     smokeUsed: false,
@@ -62,7 +62,7 @@ describe('combat', () => {
     expect(cleave.fighters.find((f) => f.id === 'e2')!.hp).toBeLessThan(47);
   });
   it('smoke guarantees exactly one escape per floor', () => {
-    const s = battle('rogue', true);
+    const s = battle('samurai', true);
     const next = resolveTurn(s, { type: 'flee' });
     expect(next.outcome).toBe('fled');
     expect(next.resources.smokeUsed).toBe(true);
@@ -79,12 +79,12 @@ describe('combat', () => {
     expect(escaped).toBeLessThan(550);
   });
   it('mend boosts by 20 percent and censer heals another ally', () => {
-    const s = playerTurn(battle('cleric'));
+    const s = playerTurn(battle('healer'));
     s.fighters[0].hp = 1;
     const boosted = resolveTurn(s, { type: 'skill', target: 'p' });
     expect(boosted.fighters[0].hp).toBe(73);
-    const c = playerTurn(battle('cleric', true));
-    const ally = fighter('knight');
+    const c = playerTurn(battle('healer', true));
+    const ally = fighter('tank');
     ally.id = 'ally';
     ally.hp = 1;
     c.fighters.push(ally);
@@ -93,7 +93,7 @@ describe('combat', () => {
     expect(healed.fighters[0].hp).toBe(28);
   });
   it('phoenix revives the first fallen ally only once per run', () => {
-    const s = playerTurn(battle('cleric', true));
+    const s = playerTurn(battle('healer', true));
     s.order = ['e', 'p'];
     s.fighters[0].hp = 1;
     s.fighters[1].stats.atk = 100;
@@ -105,7 +105,7 @@ describe('combat', () => {
     expect(second.outcome).toBe('wipe');
   });
   it('defend reduces damage and Iron Heart restores five percent', () => {
-    const s = playerTurn(battle('knight', true));
+    const s = playerTurn(battle('tank', true));
     s.fighters[0].hp = 40;
     const d = resolveTurn(s, { type: 'defend' });
     expect(d.fighters[0].hp).toBe(46);
@@ -117,7 +117,7 @@ describe('combat', () => {
   });
   it('AI honors taunt and learns action counts without mutating profiles', () => {
     const s = battle();
-    const tank = fighter('knight');
+    const tank = fighter('tank');
     tank.id = 'tank';
     tank.tauntTurns = 1;
     s.fighters.push(tank);
@@ -135,7 +135,7 @@ it('Lucky Coin and Parrying Dagger use their specified seeded probabilities', ()
   let criticals = 0,
     counters = 0;
   for (let seed = 0; seed < 1000; seed++) {
-    const s = playerTurn(battle('knight'));
+    const s = playerTurn(battle('tank'));
     s.rng = seed;
     s.fighters[0].effects = ['crit'];
     if (

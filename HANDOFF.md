@@ -16,6 +16,7 @@ Read these files before changing code:
 2. This handoff — especially the owner's later clarifications and deployment path.
 3. `README.md` — commands, mechanics, balance choices, save behavior and deployment notes.
 4. `docs/MVP-STATUS.md` — checklist status and last observed validation.
+5. `docs/VISUALS-HANDOFF.md` — for any art or presentation work: how sprites, tiles and combat are drawn, how to inspect them, and the prioritized list of visuals still to fix.
 
 The owner already approved the architecture and implementation plan. A fresh local session should verify the checkout, run it, publish it, and obtain live feedback.
 
@@ -88,7 +89,7 @@ The local feedback pass implements continuous walking, normalized diagonal speed
 
 - Replace tile-step walking with continuous movement and smooth diagonal input. The camera should stay much lower, near the characters, so rooms feel larger, and should not jerk at room edges.
 - Allow combat actions to be queued before the player's turn, with a way to change or cancel them.
-- Puzzles feel good enough. Keep their mechanics intact.
+- Puzzles feel good enough. Keep their mechanics intact. *(Superseded on October 21: the owner asked for rooms 2–5× bigger, more enemies, and harder, spread-out puzzles. The mechanics are unchanged; the layouts, piece counts and patrols are new.)*
 - Combat feels too trivial and classes feel redundant. The owner will refine class identity and longer combat later; do not rebalance encounters as part of the movement/input pass.
 - Future combat direction: tanks begin with more aggro; large heals and damage can pull enemies away if the tank does not maintain threat. Exposed characters should risk dying within one or two turns at the intended level. Shield Bash should become a separate threat-generating move so tanks choose between damage, aggro and defense. This is recorded design direction, not implemented combat behavior.
 
@@ -97,7 +98,7 @@ The local feedback pass implements continuous walking, normalized diagonal speed
 - **A ghost is an offline snapshot of another player's character, not a literal ghost.** The first prototype interpreted this too literally; the current source has already replaced floating spirits with ordinary adventurers, faces, clothing, boots and class equipment.
 - The owner requested clearer distinction between wandering enemies and players. This is implemented: friendly recruits have teal diamond markers and Recruit/In party labels; the controlled player has a gold circle; enemies have distinct creature silhouettes, red triangle markers and HOSTILE/BOSS labels. Combat portraits use the matching enemy art.
 - The owner wants a simpler HUD but explicitly accepted the current HUD temporarily. The supplied low-fidelity reference is included at **`docs/references/safe-room-hud.jpg`**: current level and deepest level at top left, compact party portraits at bottom right, and a **+** for an open party slot. Leave most of the viewport to the world. The example's numbers are illustrative, not new MVP content.
-- The owner asked whether sprite sheets can be used. **Yes, but no sprite sheets have been supplied yet.** Current artwork is generated canvas placeholder art. On receiving sheets, inspect frame dimensions, animation rows and facing directions, then replace the visual layer without changing deterministic game rules.
+- The owner asked whether sprite sheets can be used. **Yes.** Characters are now 64 × 64 paper dolls from the owner's Paper Doll Studio, which runs as `studio.html` and can send looks straight into the game (see README). Enemies are still generated canvas art. On receiving sheets, inspect frame dimensions, animation rows and facing directions, then replace the visual layer without changing deterministic game rules.
 - The immediate goal is to get a live build online so the owner can play and give feedback.
 
 Visual references of the current implementation:
@@ -129,7 +130,7 @@ Rules have **no runtime dependencies, DOM or Three.js imports**. All game state 
 
 State flow: class select → hub → floors 1–4 ↔ combat → floor 5 safe room; hub/safe-room portals unlock at run completion. Reset returns to class select after confirmation. Gear and class changes are hub-only.
 
-Implemented MVP content: Knight, Cleric, Rogue; all 24 exact gear choices from the GDD; hiring/cards/party indicators; four hand-authored floors with pressure plates, lever order, lights-out braziers and boss/key hunt; locked stairs; visible patrols, wall-aware detection, sneaking and fleeing; autonomous companions; XP/gold; sanctuary portals; wipes; confirmed reset; saves and decision logs.
+Implemented MVP content: Knight, Cleric, Rogue *(since October 21: Tank, Healer, Archer, Mage and Samurai, at the owner's request, with 40 gear choices; see README)*; all 24 exact gear choices from the GDD; hiring/cards/party indicators; four hand-authored floors with pressure plates, lever order, lights-out braziers and boss/key hunt; locked stairs; visible patrols, wall-aware detection, sneaking and fleeing; autonomous companions; XP/gold; sanctuary portals; wipes; confirmed reset; saves and decision logs.
 
 Do not implement Supabase, auth, real-player lending/social features, procedural floors or floors beyond 5 as part of this MVP. `learn()` and player decision logging exist, but the player profile is not updated automatically in this slice.
 

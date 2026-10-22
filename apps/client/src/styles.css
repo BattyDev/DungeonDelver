@@ -696,8 +696,8 @@ kbd {
 }
 .class-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
 }
 .class-card {
   position: relative;
@@ -1174,13 +1174,13 @@ kbd {
     grid-column: 3;
     grid-row: 2;
   }
-  .sneak-toggle {
+  .sprint-toggle {
     align-self: end;
     font-size: 9px;
     padding: 9px;
     background: #172d2de8;
   }
-  .sneak-toggle.on {
+  .sprint-toggle.on {
     border-color: var(--gold);
     color: var(--gold);
   }
@@ -1501,4 +1501,709 @@ kbd {
   width: max-content;
   max-width: 180px;
   white-space: nowrap;
+}
+
+/* Paper doll art: keep pixels square at any size. */
+.pixel-art,
+.avatar.portrait img {
+  image-rendering: pixelated;
+}
+.class-art img.pixel-art {
+  height: 176px;
+  width: 176px;
+  object-fit: contain;
+}
+.avatar.portrait {
+  overflow: hidden;
+  padding: 0;
+}
+.avatar.portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 15%;
+}
+.body-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+  align-items: center;
+  margin-top: 20px;
+}
+.body-picker > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.body-picker .eyebrow {
+  margin-right: 4px;
+}
+.chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: #ffffff05;
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chip.selected {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  color: var(--gold);
+}
+.chip.studio-link {
+  margin-left: auto;
+}
+.chip.studio-link:hover {
+  border-color: #e5ba7266;
+}
+/* Combat: a pixel battlefield above compact fighter cards. */
+.battlefield {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  background: #000;
+}
+.battlefield-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 300 / 140;
+  max-height: 46vh;
+  object-fit: contain;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+.combat-overlay .combatants .fighter {
+  padding: 7px 9px;
+}
+.combat-overlay .combat-team {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.combat-overlay .combat-log {
+  min-height: 52px;
+  max-height: 90px;
+}
+
+/* Overlay HUD: the world fills the screen; floor info top left, the party bottom right. */
+.hud-shell .topbar {
+  height: 56px;
+}
+.hud-shell .game-layout {
+  display: block;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.hud-shell .stage-wrap {
+  height: 100%;
+}
+.hud {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+}
+.hud-card,
+.hud .party-member,
+.hud .empty-slot,
+.hud-actions > * {
+  pointer-events: auto;
+  background: #0f1d21de;
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+}
+.hud-left {
+  top: 14px;
+  left: 14px;
+  width: 272px;
+  max-height: calc(100% - 28px);
+  overflow: auto;
+}
+.hud-card {
+  border-radius: 10px;
+  padding: 11px 13px 12px;
+}
+.hud-floor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.floor-pill {
+  background: var(--gold);
+  color: #182b29;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.hud-toggle {
+  margin-left: auto;
+  min-height: 0;
+  padding: 1px 7px;
+  font-size: 11px;
+}
+.hud-left h1 {
+  font-size: 22px;
+  margin: 7px 0 5px;
+  line-height: 1.15;
+}
+.hud-objective {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #b8c7bd;
+  margin: 0 0 8px;
+}
+.hud-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.hud-progress .chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  gap: 4px;
+}
+.hud-progress .chip.done {
+  color: var(--green);
+  border-color: #a9d9bd55;
+}
+.minimap {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  image-rendering: pixelated;
+  border-radius: 6px;
+  background: #0a1417;
+  border: 1px solid var(--line);
+}
+.hud-left.collapsed .hud-body {
+  display: none;
+}
+.hud-right {
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: calc(100% - 28px);
+}
+.hud-right .party-list {
+  flex-direction: row;
+  gap: 6px;
+  margin: 0;
+}
+.hud-right .party-member {
+  position: relative;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 78px;
+  padding: 7px 6px 6px;
+  text-align: center;
+}
+.hud-right .party-member.you {
+  border-color: #e5ba7277;
+}
+.hud-right .party-member.down {
+  opacity: 0.45;
+}
+.hud-right .party-member .avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+}
+.hud-right .party-member strong {
+  font-size: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hud-right .party-member small {
+  font-size: 9px;
+  margin: 0;
+  color: var(--muted);
+}
+.hud-right .party-member .bar {
+  width: 100%;
+  margin: 1px 0;
+}
+.hud-right .party-member .dismiss {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-height: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+}
+.hud-right .empty-slot {
+  width: 78px;
+  justify-content: center;
+  padding: 0;
+  border-style: dashed;
+  font-size: 24px;
+  color: #8fb3a6;
+}
+.hud-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.hud-actions button {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.hud-actions button.primary {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.hud-actions .composition,
+.hud-actions .supplies {
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.hud-shell .stage-footer {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  z-index: 4;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  pointer-events: none;
+  max-width: calc(100% - 470px);
+  opacity: 0.85;
+}
+.room-banner {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  pointer-events: none;
+  font-family: var(--serif);
+  font-size: 32px;
+  color: var(--ink);
+  text-shadow: 0 2px 12px #000c;
+  letter-spacing: 0.02em;
+  animation: banner 2.4s ease forwards;
+}
+@keyframes banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  15%,
+  70% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.world-sign {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  z-index: 1;
+  pointer-events: none;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #0f1d21cc;
+  border: 1px solid #e5ba7244;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.world-sign.done {
+  color: var(--green);
+  border-color: #a9d9bd55;
+}
+@media (max-width: 800px) {
+  .hud-left {
+    width: 210px;
+  }
+  .hud-left h1 {
+    font-size: 18px;
+  }
+  .hud-right .party-member,
+  .hud-right .empty-slot {
+    width: 62px;
+  }
+  .hud-right .party-member .avatar {
+    width: 36px;
+    height: 36px;
+  }
+  .hud-shell .stage-footer {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-banner {
+    animation: none;
+  }
+}
+
+/* Combat that fits without scrolling: title and turn order, the battlefield, then log and actions. */
+.combat-overlay.compact {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px 16px;
+  overflow: hidden;
+}
+.combat-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.combat-title h2 {
+  font-size: 24px;
+  margin: 2px 0 0;
+  white-space: nowrap;
+}
+.turn-strip {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-end;
+  padding: 3px;
+}
+.turn-chip {
+  flex: 0 0 auto;
+  width: 64px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.turn-chip .avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  font-size: 15px;
+}
+.turn-chip .chip-name {
+  font-size: 9px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.turn-chip .bar {
+  width: 100%;
+  margin: 0;
+}
+.turn-chip.enemy .bar > span {
+  background: #cc9291;
+}
+.turn-chip.active:first-child::before {
+  content: 'NOW';
+  position: absolute;
+  top: -7px;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  color: #182b29;
+  background: var(--gold);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.turn-chip {
+  position: relative;
+}
+.compact .battlefield {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  background: #0a1417;
+}
+.compact .battlefield-canvas {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+.combat-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 14px;
+  align-items: end;
+}
+.compact .combat-log {
+  min-height: 0;
+  max-height: 96px;
+  border-top: 0;
+  padding-top: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.combat-controls {
+  display: grid;
+  gap: 7px;
+}
+.compact .combat-queue {
+  min-height: 34px;
+  padding: 5px 10px;
+}
+@media (max-width: 900px) {
+  .combat-top {
+    flex-wrap: wrap;
+  }
+  .turn-strip {
+    justify-content: flex-start;
+    flex-basis: 100%;
+  }
+  .combat-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .compact .combat-log {
+    display: none;
+  }
+}
+
+.enemy-label.far {
+  visibility: hidden !important;
+}
+
+/* Loadout: who you are, beside a preview of how you look. */
+.look-editor {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin: 16px 0 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff04;
+}
+.look-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 6px;
+  background: radial-gradient(ellipse at 50% 90%, #e5ba7222, transparent 70%);
+}
+.look-pickers {
+  display: grid;
+  gap: 8px;
+}
+.look-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.look-row .eyebrow {
+  width: 58px;
+}
+.look-pickers .studio-link {
+  justify-self: start;
+  margin: 2px 0 0;
+  cursor: pointer;
+}
+@media (max-width: 560px) {
+  .look-editor {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+}
+
+/* Companions: a wide dialog of portrait cards that fits on one screen. */
+.modal.wide {
+  width: min(1060px, 100%);
+  max-height: 94dvh;
+  padding: 18px 22px 22px;
+}
+.modal.wide .modal-header {
+  margin-bottom: 4px;
+}
+.modal.wide h2 {
+  font-size: 28px;
+  margin: 4px 0 0;
+}
+.modal.wide h3 {
+  font-size: 16px;
+  margin: 14px 0 8px;
+}
+.modal.wide h3 small {
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+.roster-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.roster-head p {
+  margin: 0;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.modal.wide .roster {
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 7px;
+}
+.roster-card {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 6px 6px 8px;
+  text-align: center;
+  border-color: color-mix(in srgb, var(--class-color) 22%, transparent);
+}
+.roster-card img {
+  width: 64px;
+  height: 64px;
+  margin: -4px 0 -2px;
+}
+.roster-card strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.roster-card small {
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.3;
+  min-height: 2.6em;
+}
+.roster-card .gold {
+  font-size: 11px;
+  gap: 4px;
+}
+.roster-card.hired {
+  border-color: #a9d9bd88;
+  background: #a9d9bd10;
+}
+.roster-card.hired .gold {
+  color: var(--green);
+}
+.modal.hire {
+  width: min(820px, 100%);
+}
+.hire-card {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 22px;
+}
+.hire-who {
+  text-align: center;
+}
+.hire-portrait {
+  width: 128px;
+  height: 128px;
+  display: block;
+  margin: 0 auto 4px;
+}
+.hire .hire-who h2 {
+  font-size: 30px;
+}
+.hire blockquote {
+  font-size: 16px;
+  margin: 12px 0 0;
+  padding: 10px 0;
+}
+.hire .stat-grid div {
+  padding: 7px 9px;
+}
+.hire .stat-grid strong {
+  font-size: 16px;
+}
+.hire .gear-list {
+  margin: 0 0 14px;
+  gap: 6px;
+}
+.hire .gear-row {
+  padding: 7px 10px;
+}
+.hire .modal-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 700px) {
+  .hire-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hire-portrait {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+/* Five classes side by side: tighter cards on the start screen. */
+.class-cards .class-art {
+  height: 150px;
+}
+.class-cards .class-art img.pixel-art {
+  height: 150px;
+  width: 150px;
+}
+.class-cards .class-card-body {
+  padding: 14px;
+}
+.class-cards .class-card-body h2 {
+  font-size: 26px;
+}
+.class-cards .class-card-body p {
+  font-size: 11px;
+}
+@media (max-width: 1100px) {
+  .class-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .class-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Journal: start a puzzle over, or reveal what to do next. */
+.puzzle-tools {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.puzzle-hint summary {
+  cursor: pointer;
+  color: var(--gold);
+  font-size: 12px;
+}
+.puzzle-hint p {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.combat-menu .auto-toggle.on {
+  border-color: var(--green);
+  color: var(--green);
 }

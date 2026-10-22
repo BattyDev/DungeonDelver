@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sprite sheet (dev)</title>
+    <!--
+      Dev-only contact sheet of the default paper-doll sprites (not part of the build).
+      Open http://localhost:5173/DungeonDelver/debug-sheet.html with any of:
+        bodies=humanM,orcF,...   race + F/M (default humanM,orcF,dwarfM,gnomeF)
+        classes=tank,healer,...  default all five
+        anim=walk&frame=1        one frame per direction (default walk, frame 1)
+        dirs=0,2,4,6             0 S, 1 SW, 2 W, 3 NW, 4 N, 5 NE, 6 E, 7 SE
+        combat=                  each class's combat animation at the combat camera (E), frames across;
+                                 or combat=hurt / death / attack ... for one animation
+        scale=3                  pixel zoom
+      document.title becomes "ready" once drawn, for scripted screenshots.
+    -->
+    <style>
+      body {
+        background: #2a3a3e;
+        color: #ddd;
+        font: 11px system-ui;
+        margin: 8px;
+      }
+      canvas {
+        image-rendering: pixelated;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script type="module">
+      import { Doll, defaultLook } from '/src/paperdoll/looks.ts';
+      import { ANIMS } from '/src/paperdoll/model.ts';
+      import { creatureFor, CREATURE_IDS } from '/src/paperdoll/creatures.ts';
+      const params = new URLSearchParams(location.search);
+      const creatures = params.has('creatures');
+      const bodies = creatures
+        ? (params.get('creatures') || CREATURE_IDS.join(',')).split(',')
+        : (params.get('bodies') ?? 'humanM,orcF,dwarfM,gnomeF').split(',');
+      const classes = creatures
+        ? ['creature']
+        : (params.get('classes') ?? 'tank,healer,archer,mage,samurai').split(',');
+      const dirs = (params.get('dirs') ?? '0,1,2,3,4,5,6,7').split(',').map(Number);
+      const anim = params.get('anim') ?? 'walk';
+      const frame = Number(params.get('frame') ?? 1);
+      const S = Number(params.get('scale') ?? 2);
+      const combatAnim = {
+        tank: 'attack',
+        healer: 'heal',
+        archer: 'shoot',
+        mage: 'cast',
+        samurai: 'slash',
+      };
+      const cols = params.has('combat') ? 6 : dirs.length;
+      const c = document.getElementById('c');
+      c.width = (cols * 64 + 60) * S;
+      c.height = bodies.length * classes.length * 64 * S;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      const tmp = document.createElement('canvas');
+      tmp.width = tmp.height = 64;
+      let r = 0;
+      for (const b of bodies)
+        for (const cls of classes) {
+          const doll = creatures
+            ? creatureFor(b)
+            : new Doll(defaultLook(b.slice(0, -1), b.slice(-1), cls));
+          ctx.fillStyle = r % 2 ? '#33464a' : '#2c3d41';
+          ctx.fillRect(0, r * 64 * S, c.width, 64 * S);
+          ctx.fillStyle = '#ddd';
+          ctx.font = `${10 * S}px system-ui`;
+          ctx.fillText(b, 4, (r * 64 + 20) * S);
+          ctx.fillText(creatures ? params.get('combat') || anim : cls, 4, (r * 64 + 36) * S);
+          const strip = params.has('combat')
+            ? [0, 1, 2, 3, 4, 5].map((f) => [
+                params.get('combat') || (creatures ? 'idle' : combatAnim[cls]),
+                creatures ? 2 : 6,
+                f,
+              ])
+            : dirs.map((d) => [anim, d, frame]);
+          for (const [i, [a, d, fr]] of strip.entries()) {
+            if (fr >= ANIMS[a].frames) continue;
+            let f;
+            try {
+              f = doll.frameNow(a, d, fr);
+            } catch {
+              continue;
+            }
+            if (!f) continue;
+            tmp.getContext('2d').putImageData(new ImageData(f.slice(), 64, 64), 0, 0);
+            ctx.drawImage(tmp, (60 + i * 64) * S, r * 64 * S, 64 * S, 64 * S);
+          }
+          r++;
+        }
+      document.title = 'ready';
+    </script>
+  </body>
+</html>

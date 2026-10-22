@@ -1,4 +1,4 @@
-import { CLASS_IDS } from './classes';
+import { CLASS_IDS, LEGACY_CLASS_IDS, RACE_IDS, SEX_IDS } from './classes';
 import { ITEMS, SLOTS } from './items';
 import { getFloor } from './content/floors';
 import { walkable } from './floors/pressure-plates';
@@ -49,6 +49,10 @@ function character(x: unknown): boolean {
     CLASS_IDS.includes(x.classId as never) &&
     integer(x.xp) &&
     text(x.color) &&
+    (x.appearance === undefined ||
+      (object(x.appearance) &&
+        RACE_IDS.includes(x.appearance.race as never) &&
+        SEX_IDS.includes(x.appearance.sex as never))) &&
     object(x.loadout) &&
     SLOTS.every((slot) =>
       ITEMS.some(
@@ -206,7 +210,8 @@ function floor(x: unknown): boolean {
         integer(p.waypoint) &&
         p.waypoint < def.patrols.find((d) => d.id === p.id)!.path.length &&
         integer(p.pauseTicks) &&
-        typeof p.defeated === 'boolean',
+        typeof p.defeated === 'boolean' &&
+        (p.home === undefined || point(p.home)),
     ) && (x.patrols as unknown[]).length === def.patrols.length
   );
 }
@@ -250,6 +255,16 @@ function combat(x: unknown): boolean {
       fighters.some((f) => f.id === order[x.cursor as number] && num(f.hp) && f.hp > 0))
   );
 }
+/** Saves from before the five classes name knights, clerics and rogues; rename them in place. */
+function migrateClasses(x: unknown): void {
+  if (Array.isArray(x)) x.forEach(migrateClasses);
+  else if (object(x))
+    for (const [k, v] of Object.entries(x)) {
+      if (k === 'classId' && typeof v === 'string' && LEGACY_CLASS_IDS[v])
+        x[k] = LEGACY_CLASS_IDS[v];
+      else migrateClasses(v);
+    }
+}
 export function parseSave(raw: string): SaveData {
   let value: unknown;
   try {
@@ -261,6 +276,7 @@ export function parseSave(raw: string): SaveData {
     throw new Error('This save version is unsupported. Your stored save has been preserved.');
   const s = value.state;
   if (!object(s)) throw new Error('Save state is missing.');
+  migrateClasses(s);
   let valid = s.phase === 'classSelect';
   if (s.phase === 'hub' || s.phase === 'safeRoom') valid = progress(s.progress);
   if (s.phase === 'floor' || s.phase === 'combat') {

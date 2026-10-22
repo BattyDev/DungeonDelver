@@ -3,6 +3,7 @@ export class Keyboard {
   constructor(
     private interact: () => void,
     private close: () => void,
+    private toggleMap: () => void = () => undefined,
   ) {
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
@@ -17,6 +18,7 @@ export class Keyboard {
       if (!e.repeat) {
         if (['e', 'enter', ' '].includes(key) && !(e.target as HTMLElement).closest('button'))
           this.interact();
+        if (key === 'm') this.toggleMap();
       }
     });
     window.addEventListener('keyup', (e) => this.held.delete(e.key.toLowerCase()));
