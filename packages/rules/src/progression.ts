@@ -32,6 +32,17 @@ export function newProgress(
     completedRuns: 0,
   };
 }
+/**
+ * After a won encounter the living catch their breath: 4 MP and a tenth of their HP. The fallen
+ * stay down until the next floor or a potion.
+ */
+export function recoverAfterVictory(party: Fighter[]): Fighter[] {
+  return party.map((f) => ({
+    ...f,
+    mp: Math.min(f.stats.mp, f.mp + 4),
+    hp: f.hp > 0 ? Math.min(f.stats.hp, f.hp + Math.round(f.stats.hp * 0.1)) : f.hp,
+  }));
+}
 export function startRun(progress: Progress): RunState {
   const party = [
     createFighter(progress.player, 1, true),

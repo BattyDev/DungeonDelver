@@ -1174,13 +1174,13 @@ kbd {
     grid-column: 3;
     grid-row: 2;
   }
-  .sneak-toggle {
+  .sprint-toggle {
     align-self: end;
     font-size: 9px;
     padding: 9px;
     background: #172d2de8;
   }
-  .sneak-toggle.on {
+  .sprint-toggle.on {
     border-color: var(--gold);
     color: var(--gold);
   }
@@ -2201,4 +2201,9 @@ kbd {
 .puzzle-hint p {
   font-size: 12px;
   margin: 8px 0 0;
+}
+
+.combat-menu .auto-toggle.on {
+  border-color: var(--green);
+  color: var(--green);
 }

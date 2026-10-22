@@ -29,8 +29,9 @@ For a system Chromium, use `CHROMIUM_PATH=/usr/bin/chromium pnpm test:browser`. 
 
 - WASD/arrows: continuous movement, including diagonals at the same speed. Release to stop; walk into walls to slide along them. Clicking the floor follows a route through open space.
 - E/Enter: nearby interaction. Tap an NPC or use Companions to inspect and hire.
-- Shift: sneak; detection rings show the unsneaking detection range. Shadow Cloak reduces it by 40%; sneaking reduces it further.
-- In combat, select an enemy for attacks or an ally for Mend/potions. Only the player is controlled directly. Ghosts and enemies act automatically in speed order.
+- Shift (or the Sprint button): sprint, about 65% faster. Sprinting is loud: patrols detect you from 1.6× farther, and any that can see you within 6.5 tiles leave their route to come at you, then walk back once you stop. Detection rings show the normal range; cloaks reduce detection by 40%.
+- Combat is an auto-battler by default: everyone, including your character, picks actions on their own in speed order. Choose an action (and a target) to override your next turn, or switch **Auto** off in the combat menu to play every turn yourself. The setting is saved in the browser.
+- Enemies hit 15% harder than at launch; after each won encounter the living party recovers 10% HP and 4 MP.
 - You can choose an action during another character's turn to queue it. Change the action or target to replace it, or use Cancel. It executes once on your next turn; invalid targets or unavailable resources cancel it without spending your turn. Queues clear when combat ends or the page reloads.
 - Read the pale-blue rune tablets for puzzle clues. The Journal holds discovered clues and a stone reset option.
 - Gear/class changes and hires are hub-only. A tank, healer and two damage dealers are recommended.

@@ -3,7 +3,14 @@ import { transition } from './game';
 import { CLASS_IDS } from './classes';
 import { FLOORS, getFloor } from './content/floors';
 import { GHOSTS } from './content/ghosts';
-import { createFloor, canWalk, encounterAt, lineOfSight } from './floors/exploration';
+import {
+  createFloor,
+  canWalk,
+  distance,
+  encounterAt,
+  lineOfSight,
+  tickPatrols,
+} from './floors/exploration';
 import { walkable } from './floors/pressure-plates';
 import { isSolved } from './floors/puzzles';
 import { createEnemy } from './content/enemies';
@@ -62,12 +69,17 @@ describe('progression and exploration', () => {
         expect(seen.has(`${p.x},${p.z}`)).toBe(true);
     }
   });
-  it('detection respects walls, stealth and flee grace', () => {
+  it('detection respects walls, stealth, sprinting and flee grace', () => {
     const def = getFloor(1),
       f = createFloor(def);
     f.position = { x: 3, z: 8 };
     expect(encounterAt(def, f, false, false)).toBe('moss');
-    expect(encounterAt(def, f, true, true)).toBeUndefined();
+    expect(encounterAt(def, f, true, false)).toBeUndefined();
+    // Sprinting is loud: the same patrol hears you from farther away.
+    f.position = { x: 2, z: 9.5 };
+    expect(encounterAt(def, f, false, false)).toBeUndefined();
+    expect(encounterAt(def, f, false, true)).toBe('moss');
+    f.position = { x: 3, z: 8 };
     f.patrols[0].pauseTicks = 90;
     expect(encounterAt(def, f, false, false)).toBeUndefined();
     expect(lineOfSight(def, { x: 10, z: 1 }, { x: 14, z: 1 })).toBe(false);
@@ -170,4 +182,17 @@ it('a broke player can always recruit a balanced community party', () => {
     expect(s.progress.hires).toHaveLength(3);
     expect(s.progress.gold).toBe(0);
   }
+});
+
+it('sprinting draws patrols off their route, and they walk back afterwards', () => {
+  const def = getFloor(1);
+  let f = { ...createFloor(def), position: { x: 5, z: 11 } };
+  const start = { ...f.patrols[0].position };
+  f = tickPatrols(def, f, true);
+  const chased = f.patrols[0];
+  expect(chased.home).toEqual(start);
+  expect(distance(chased.position, f.position)).toBeLessThan(distance(start, f.position));
+  // Walking quietly, the patrol retraces to its route and resumes it.
+  for (let i = 0; i < 40; i++) f = tickPatrols(def, f, false);
+  expect(f.patrols[0].home).toBeUndefined();
 });

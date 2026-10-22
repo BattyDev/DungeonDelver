@@ -173,6 +173,8 @@ export interface PatrolState {
   waypoint: number;
   pauseTicks: number;
   defeated: boolean;
+  /** Where a patrol left its route to chase a sprinting player; it walks back here after. */
+  home?: Point;
 }
 export interface FloorState {
   id: number;
@@ -224,8 +226,8 @@ export type GameCommand =
   | { type: 'startRun' }
   | { type: 'portal' }
   | { type: 'reset' }
-  | { type: 'move'; dx: number; dz: number; sneak?: boolean }
-  | { type: 'tick'; sneak: boolean }
+  | { type: 'move'; dx: number; dz: number; sprint?: boolean }
+  | { type: 'tick'; sprint: boolean }
   | { type: 'interact' }
   | { type: 'puzzle'; action: PuzzleAction }
   | { type: 'combat'; action: Action }

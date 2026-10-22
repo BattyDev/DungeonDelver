@@ -55,13 +55,15 @@ export const ENEMIES: Record<
     boss: true,
   },
 };
+export const ENEMY_ATTACK = 1.15;
 export function createEnemy(type: string, id: string, level: number): Fighter {
   const def = ENEMIES[type];
   const n = level - 1;
   const stats = {
     ...def.stats,
     hp: def.stats.hp + n * 16,
-    atk: def.stats.atk + n * 3,
+    // Tuned up 15% at the owner's request: fights should sting a little more.
+    atk: Math.round((def.stats.atk + n * 3) * ENEMY_ATTACK),
     def: def.stats.def + n * 2,
   };
   return {

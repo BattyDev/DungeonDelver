@@ -6,7 +6,7 @@ import { getFloor } from './content/floors';
 import { createEnemy } from './content/enemies';
 import { activeFighter, resolveTurn, startCombat } from './combat';
 import { chooseAction } from './ai';
-import { endRun, newProgress, startRun, syncParty } from './progression';
+import { endRun, newProgress, recoverAfterVictory, startRun, syncParty } from './progression';
 import { createFloor, distance, encounterAt, moveOnFloor, tickPatrols } from './floors/exploration';
 import { pullLever } from './floors/lever-order';
 import { toggleBrazier } from './floors/braziers';
@@ -14,13 +14,13 @@ import { keyHunt } from './floors/key-hunt';
 import { isSolved } from './floors/puzzles';
 import type { GameState, GameCommand } from './types';
 type Exploring = Extract<GameState, { phase: 'floor' }>;
-function encounter(s: Exploring, sneak: boolean): GameState {
+function encounter(s: Exploring, sprint: boolean): GameState {
   const def = getFloor(s.floor.id);
   const id = encounterAt(
     def,
     s.floor,
     s.run.party.some((f) => f.effects.includes('stealth')),
-    sneak,
+    sprint,
   );
   if (!id) return s;
   const p = def.patrols.find((p) => p.id === id)!;
@@ -71,7 +71,7 @@ function settle(s: Extract<GameState, { phase: 'combat' }>): GameState {
     };
     run.unbankedGold += enemies.reduce((n, f) => n + f.gold, 0);
     // Small encounter recovery keeps the four-floor expedition viable without a shop.
-    run.party = run.party.map((f) => ({ ...f, mp: Math.min(f.stats.mp, f.mp + 4) }));
+    run.party = recoverAfterVictory(run.party);
     if (
       getFloor(floor.id).patrols.find((p) => p.id === patrol.id)!.boss &&
       floor.puzzle.type === 'key'
@@ -193,9 +193,9 @@ export function transition(state: GameState, command: GameCommand): GameState {
   const s = clone(state),
     def = getFloor(s.floor.id);
   if (command.type === 'tick') {
-    s.floor = tickPatrols(def, s.floor);
+    s.floor = tickPatrols(def, s.floor, command.sprint);
     s.run.floors[s.floor.id] = s.floor;
-    return encounter(s, command.sneak);
+    return encounter(s, command.sprint);
   }
   if (command.type === 'move') {
     const { dx, dz } = command;
@@ -203,7 +203,7 @@ export function transition(state: GameState, command: GameCommand): GameState {
     if (floor === s.floor) return state;
     s.floor = floor;
     s.run.floors[s.floor.id] = s.floor;
-    return encounter(s, !!command.sneak);
+    return encounter(s, !!command.sprint);
   }
   if (command.type === 'puzzle') {
     // All puzzle interactions require proximity. Boss progress comes only from combat settlement.

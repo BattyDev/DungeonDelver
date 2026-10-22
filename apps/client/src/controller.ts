@@ -14,6 +14,7 @@ import {
   getFloor,
   isSolved,
   activeFighter,
+  chooseAction,
   distance,
   canOccupy,
 } from '@delver/rules';
@@ -47,6 +48,14 @@ import { GAME_CLASS_LOOK, RACES, SEXES } from './paperdoll/model';
 import { RETURN_KEY } from './paperdoll/wardrobe';
 const avatarLook = (look: Look, classId: ClassId) =>
   `<span class="avatar portrait" style="--class-color:${CLASSES[classId].color}"><img src="${lookPortrait(look)}" alt=""></span>`;
+const AUTO_KEY = 'dungeon-delver.auto-battle';
+function readAutoBattle() {
+  try {
+    return localStorage.getItem(AUTO_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
 const characterAvatar = (c: Pick<Character, 'id' | 'classId' | 'appearance'>, player: boolean) =>
   avatarLook(player ? characterLook(c, true) : lookById(c.id, c.classId), c.classId);
 const classCopy: Record<ClassId, string> = {
@@ -72,7 +81,9 @@ export class Controller {
   private lastMap = 0;
   private lastTick = 0;
   private lastAI = 0;
-  private sneak = false;
+  private sprint = false;
+  /** Auto-battle picks the player's actions; a queued action still overrides it. Saved per browser. */
+  private autoBattle = readAutoBattle();
   private selectedTarget = '';
   private queuedAction?: Action;
   private combatStage?: CombatStage;
@@ -365,7 +376,7 @@ export class Controller {
     const dungeon = s.phase === 'floor' || s.phase === 'combat';
     stage.insertAdjacentHTML(
       'beforeend',
-      `<div class="touch-controls"><div class="dpad"><button data-dir="0,-1" aria-label="Move north">↑</button><button data-dir="-1,0" aria-label="Move west">←</button><button data-dir="0,1" aria-label="Move south">↓</button><button data-dir="1,0" aria-label="Move east">→</button></div>${dungeon ? `<button class="sneak-toggle ${this.sneak ? 'on' : ''}" data-action="sneak">Sneak</button>` : ''}</div>${s.phase === 'safeRoom' ? `<div class="safe-banner">${icon('compass', 32)}<span class="eyebrow" style="display:block;margin-top:14px">Checkpoint reached</span><h2>A moment of stillness.</h2><p>Your gold is banked. Your company has returned home. The way here will always be open.</p></div>` : ''}`,
+      `<div class="touch-controls"><div class="dpad"><button data-dir="0,-1" aria-label="Move north">↑</button><button data-dir="-1,0" aria-label="Move west">←</button><button data-dir="0,1" aria-label="Move south">↓</button><button data-dir="1,0" aria-label="Move east">→</button></div>${dungeon ? `<button class="sprint-toggle ${this.sprint ? 'on' : ''}" data-action="sprint">Sprint</button>` : ''}</div>${s.phase === 'safeRoom' ? `<div class="safe-banner">${icon('compass', 32)}<span class="eyebrow" style="display:block;margin-top:14px">Checkpoint reached</span><h2>A moment of stillness.</h2><p>Your gold is banked. Your company has returned home. The way here will always be open.</p></div>` : ''}`,
     );
     stage.querySelectorAll<HTMLElement>('[data-dir]').forEach((button) => {
       button.addEventListener('pointerdown', (e) => {
@@ -380,7 +391,7 @@ export class Controller {
       button.addEventListener('pointercancel', release);
     });
     this.root.querySelector('#stage-footer')!.innerHTML =
-      `<div class="key-hints"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move <span>·</span><kbd>E</kbd> interact ${dungeon ? '<span>·</span><kbd>Shift</kbd> sneak' : ''}<span>·</span><kbd>M</kbd> map <span>·</span> ${dungeon ? 'Tap the floor to move. Touch a patrol to fight.' : 'Tap an adventurer to meet them.'}</div>`;
+      `<div class="key-hints"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move <span>·</span><kbd>E</kbd> interact ${dungeon ? '<span>·</span><kbd>Shift</kbd> sprint (patrols come at you)' : ''}<span>·</span><kbd>M</kbd> map <span>·</span> ${dungeon ? 'Tap the floor to move. Touch a patrol to fight.' : 'Tap an adventurer to meet them.'}</div>`;
     this.renderInteraction();
   }
   private updateWorld() {
@@ -653,7 +664,7 @@ export class Controller {
   private move(dx: number, dz: number) {
     if (this.modal || this.state.phase === 'combat' || this.state.phase === 'classSelect') return;
     if (this.state.phase === 'floor') {
-      this.dispatch({ type: 'move', dx, dz, sneak: this.isSneaking() });
+      this.dispatch({ type: 'move', dx, dz, sprint: this.isSprinting() });
       return;
     }
     const next = moveOnGrid(HALL_MAP, this.hubPosition, dx, dz);
@@ -674,8 +685,8 @@ export class Controller {
       }
     }
   }
-  private isSneaking() {
-    return this.sneak || this.keyboard.held.has('shift');
+  private isSprinting() {
+    return this.sprint || this.keyboard.held.has('shift');
   }
   private frame(ms: number) {
     this.time = ms / 1000;
@@ -685,7 +696,7 @@ export class Controller {
       this.motionTime += delta;
       while (this.motionTime >= 1 / 60) {
         this.motionTime -= 1 / 60;
-        const step = (this.isSneaking() ? 2.5 : 4.5) / 60;
+        const step = (this.isSprinting() ? 7.5 : 4.5) / 60;
         const direction = this.keyboard.direction();
         if (direction) {
           this.path = [];
@@ -707,7 +718,7 @@ export class Controller {
         }
       }
       if (this.state.phase === 'floor' && ms - this.lastTick >= 100) {
-        this.dispatch({ type: 'tick', sneak: this.isSneaking() });
+        this.dispatch({ type: 'tick', sprint: this.isSprinting() });
         this.lastTick = ms;
       }
       if (
@@ -732,6 +743,15 @@ export class Controller {
           this.renderCombat();
           this.toast('Queued action is no longer available. Choose another action.');
         }
+      } else if (
+        this.autoBattle &&
+        this.state.phase === 'combat' &&
+        activeFighter(this.state.combat).player &&
+        ms - this.lastAI >= 800
+      ) {
+        // Auto-battle: the player's character chooses like a companion would.
+        this.dispatch({ type: 'combat', action: chooseAction(this.state.combat).action });
+        this.lastAI = ms;
       }
     } else this.motionTime = 0;
     if (this.world) this.world.animate(this.time);
@@ -925,7 +945,7 @@ export class Controller {
     if (s.phase !== 'floor' && s.phase !== 'combat') return;
     const def = getFloor(s.floor.id);
     this.openModal(
-      `<span class="eyebrow">Floor ${def.id} · Field notes</span><h2>${def.title}</h2><p>${this.puzzleDescription()}</p><div class="notice">${s.floor.clueRead ? def.hint : 'A rune tablet is marked by a pale blue stone on your map. Walk up to it and interact to read the clue.'}</div><p class="muted" style="margin-top:18px">${s.floor.puzzle.type === 'levers' ? `Lever order entered: ${s.floor.puzzle.progress} / ${s.floor.puzzle.sequence.length}. ` : s.floor.puzzle.type === 'braziers' ? `Lit: ${s.floor.puzzle.lit.filter(Boolean).length} / ${s.floor.puzzle.lit.length}. ` : ''}${def.notes}</p>${this.puzzleTools()}<div class="divider"></div><p class="muted">Hold Shift or toggle Sneak to reduce detection. Shadow Cloak reduces detection a further 40%. Tap the floor to walk; enemies may interrupt.</p><button class="primary wide" data-action="close">Back to the expedition ${icon('arrow', 15)}</button>`,
+      `<span class="eyebrow">Floor ${def.id} · Field notes</span><h2>${def.title}</h2><p>${this.puzzleDescription()}</p><div class="notice">${s.floor.clueRead ? def.hint : 'A rune tablet is marked by a pale blue stone on your map. Walk up to it and interact to read the clue.'}</div><p class="muted" style="margin-top:18px">${s.floor.puzzle.type === 'levers' ? `Lever order entered: ${s.floor.puzzle.progress} / ${s.floor.puzzle.sequence.length}. ` : s.floor.puzzle.type === 'braziers' ? `Lit: ${s.floor.puzzle.lit.filter(Boolean).length} / ${s.floor.puzzle.lit.length}. ` : ''}${def.notes}</p>${this.puzzleTools()}<div class="divider"></div><p class="muted">Hold Shift or toggle Sprint to run, but sprinting is loud: patrols notice you from farther away and come at you. Cloaks reduce detection by 40%. Tap the floor to walk; enemies may interrupt.</p><button class="primary wide" data-action="close">Back to the expedition ${icon('arrow', 15)}</button>`,
     );
   }
   private renderCombat() {
@@ -959,7 +979,7 @@ export class Controller {
       queued && 'target' in queued
         ? c.fighters.find((f) => f.id === queued.target)?.name
         : undefined;
-    const queueHtml = `<div class="combat-queue" role="status">${queued ? `<span>Queued: <strong>${esc(queuedName)}${queuedTarget ? ` → ${esc(queuedTarget)}` : ''}</strong></span><button data-action="cancel-queue" aria-label="Cancel queued action">${icon('close', 12)} Cancel</button>` : `<span>${isPlayer ? 'Choose a target, then an action.' : 'Choose your next action now. It will fire on your turn.'}</span>`}</div>`;
+    const queueHtml = `<div class="combat-queue" role="status">${queued ? `<span>Queued: <strong>${esc(queuedName)}${queuedTarget ? ` → ${esc(queuedTarget)}` : ''}</strong></span><button data-action="cancel-queue" aria-label="Cancel queued action">${icon('close', 12)} Cancel</button>` : `<span>${this.autoBattle ? 'Auto-battle is on: everyone fights on their own. Pick an action to override your next turn.' : isPlayer ? 'Choose a target, then an action.' : 'Choose your next action now. It will fire on your turn.'}</span>`}</div>`;
     const enemies = c.fighters.filter((f) => f.team === 'enemy' && f.hp > 0);
     if (!c.fighters.some((f) => f.hp > 0 && f.id === this.selectedTarget))
       this.selectedTarget = enemies[0]?.id ?? '';
@@ -988,7 +1008,7 @@ export class Controller {
         .map((m) => `<p>${esc(m)}</p>`)
         .join(
           '',
-        )}</div><div class="combat-controls"><div class="turn-banner">${icon('sword', 14)} ${isPlayer ? 'Your turn. Pick a target on the field or in the turn order, then an action.' : `${esc(actor.name)} is acting…`}</div>${queueHtml}<div class="combat-menu">${button('attack', `${icon('sword', 14)} Attack`)}${button('skill', `${CLASSES[player.classId].skill} · ${CLASSES[player.classId].cost}`, player.mp < CLASSES[player.classId].cost)}${button('potion', `Potion (${c.resources.potions})`, c.resources.potions <= 0)}${button('defend', `${icon('shield', 14)} Defend`)}${button('flee', 'Flee')}</div></div></div></section>`,
+        )}</div><div class="combat-controls"><div class="turn-banner">${icon('sword', 14)} ${isPlayer ? 'Your turn. Pick a target on the field or in the turn order, then an action.' : `${esc(actor.name)} is acting…`}</div>${queueHtml}<div class="combat-menu">${button('attack', `${icon('sword', 14)} Attack`)}${button('skill', `${CLASSES[player.classId].skill} · ${CLASSES[player.classId].cost}`, player.mp < CLASSES[player.classId].cost)}${button('potion', `Potion (${c.resources.potions})`, c.resources.potions <= 0)}${button('defend', `${icon('shield', 14)} Defend`)}${button('flee', 'Flee')}<button class="auto-toggle ${this.autoBattle ? 'on' : ''}" data-action="auto-battle" aria-pressed="${this.autoBattle}" title="Your character picks its own actions">${this.autoBattle ? 'Auto: on' : 'Auto: off'}</button></div></div></div></section>`,
     );
     this.combatStage.setFighters(c.fighters);
     stage.querySelector('.battlefield')!.append(this.combatStage.canvas);
@@ -1136,12 +1156,22 @@ export class Controller {
         );
         break;
       }
-      case 'sneak':
-        this.sneak = !this.sneak;
-        el.classList.toggle('on', this.sneak);
+      case 'sprint':
+        this.sprint = !this.sprint;
+        el.classList.toggle('on', this.sprint);
         break;
       case 'target':
         this.selectTarget(id);
+        break;
+      case 'auto-battle':
+        this.autoBattle = !this.autoBattle;
+        try {
+          localStorage.setItem(AUTO_KEY, this.autoBattle ? 'on' : 'off');
+        } catch {
+          // Without storage the choice lasts until reload.
+        }
+        this.lastAI = performance.now();
+        this.renderCombat();
         break;
       case 'cancel-queue':
         this.queuedAction = undefined;
@@ -1166,7 +1196,7 @@ export class Controller {
   }
   private openSettings() {
     this.openModal(
-      `<span class="eyebrow">Around the campfire</span><h2>Take your time.</h2><p class="muted">Your expedition is paused while a dialog is open. Move with WASD or arrows, interact with E or Enter, and hold Shift to sneak. On touch screens, tap the floor or use the arrows.</p><p class="muted">Hire fees are paid up front. A wipe keeps XP and banked gold, loses unbanked gold, and dismisses companions.</p><button class="primary wide" data-action="close">Continue expedition ${icon('arrow', 15)}</button><div class="divider"></div><button class="wide" data-action="request-reset">Reset Game</button><small style="display:block;margin-top:9px">Deletes this device’s character, progress and combat logs.</small>`,
+      `<span class="eyebrow">Around the campfire</span><h2>Take your time.</h2><p class="muted">Your expedition is paused while a dialog is open. Move with WASD or arrows, interact with E or Enter, and hold Shift to sprint (patrols will come at you). On touch screens, tap the floor or use the arrows.</p><p class="muted">Hire fees are paid up front. A wipe keeps XP and banked gold, loses unbanked gold, and dismisses companions.</p><button class="primary wide" data-action="close">Continue expedition ${icon('arrow', 15)}</button><div class="divider"></div><button class="wide" data-action="request-reset">Reset Game</button><small style="display:block;margin-top:9px">Deletes this device’s character, progress and combat logs.</small>`,
     );
   }
   private scheduleSave() {

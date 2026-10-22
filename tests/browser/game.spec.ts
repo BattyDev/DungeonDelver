@@ -12,11 +12,14 @@ import {
 import type { GameState } from '../../packages/rules/src/index';
 import type { Page } from '@playwright/test';
 const key = 'dungeon-delver.save';
-async function fixture(page: Page, state: GameState) {
+async function fixture(page: Page, state: GameState, auto = false) {
   await page.goto('./');
   await page.evaluate(
-    ({ key, state }) => localStorage.setItem(key, JSON.stringify({ version: 1, state })),
-    { key, state },
+    ({ key, state, auto }) => {
+      localStorage.setItem(key, JSON.stringify({ version: 1, state }));
+      localStorage.setItem('dungeon-delver.auto-battle', auto ? 'on' : 'off');
+    },
+    { key, state, auto },
   );
   await page.reload();
 }
@@ -296,4 +299,18 @@ test('levers answer every pull: held, or sprung back with the sequence reset', a
   // Pulling Tide again restarts the order, with Tide held as the first lever.
   await page.keyboard.press('e');
   await expect(page.locator('.toast')).toContainText('Tide lever holds · 1 / 5');
+});
+
+test('auto-battle plays the player turn, and a queued action overrides it', async ({ page }) => {
+  const state = queuedCombat();
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  await fixture(page, state, true);
+  await expect(page.locator('.combat-menu .auto-toggle')).toHaveText('Auto: on');
+  // Companion, enemy, then the player: with no input, the player's turn still resolves.
+  await page.clock.runFor(3400);
+  const combat = (await saved(page)).combat;
+  expect(combat.decisions).toHaveLength(1);
+  await page.getByRole('button', { name: 'Auto: on' }).click({ force: true });
+  await expect(page.locator('.combat-menu .auto-toggle')).toHaveText('Auto: off');
 });

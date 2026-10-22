@@ -210,7 +210,8 @@ function floor(x: unknown): boolean {
         integer(p.waypoint) &&
         p.waypoint < def.patrols.find((d) => d.id === p.id)!.path.length &&
         integer(p.pauseTicks) &&
-        typeof p.defeated === 'boolean',
+        typeof p.defeated === 'boolean' &&
+        (p.home === undefined || point(p.home)),
     ) && (x.patrols as unknown[]).length === def.patrols.length
   );
 }

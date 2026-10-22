@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { newProgress, startRun, syncParty } from './progression';
+import { newProgress, recoverAfterVictory, startRun, syncParty } from './progression';
 import { GHOSTS } from './content/ghosts';
 import { CLASS_IDS } from './classes';
 import { FLOORS } from './content/floors';
@@ -47,9 +47,7 @@ it('a balanced party can clear every shipped encounter across four floors', () =
             combat.outcome,
             `${classId}, seed ${seed}, floor ${floor.id}, encounter ${encounter.id}`,
           ).toBe('victory');
-          run.party = combat.fighters
-            .filter((f) => f.team === 'party')
-            .map((f) => ({ ...f, mp: Math.min(f.stats.mp, f.mp + 4) }));
+          run.party = recoverAfterVictory(combat.fighters.filter((f) => f.team === 'party'));
           run.resources = combat.resources;
           rng = combat.rng;
         }

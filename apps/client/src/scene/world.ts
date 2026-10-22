@@ -213,9 +213,6 @@ export class World {
     const lookKey = JSON.stringify(look);
     if (!this.player) {
       this.player = new DollSprite(look);
-      // Drawn after the companions, which don't write depth, so the leader is never hidden behind
-      // its own party; walls and strangers still cover it as usual.
-      this.player.sprite.renderOrder = 1;
       this.actors.add(this.player.sprite);
       this.player.sprite.position.set(this.target.x, 0, this.target.z);
       this.playerMarker = this.affiliationMarker('#e5ba72', 32);
@@ -258,7 +255,6 @@ export class World {
       for (const m of members)
         if (!this.followers.has(m.id)) {
           const doll = new DollSprite(lookById(m.id, m.classId));
-          doll.sprite.material.depthWrite = false;
           const at = this.trailPoint((this.followers.size + 1) * FOLLOW_GAP);
           doll.sprite.position.set(at.x, 0, at.z);
           this.actors.add(doll.sprite);
