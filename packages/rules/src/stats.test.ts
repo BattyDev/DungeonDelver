@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { CLASS_IDS } from './classes';
+import { CLASSES, CLASS_IDS } from './classes';
 import { ITEMS, SLOTS, defaultLoadout } from './items';
 import { deriveStats } from './stats';
 import { random } from './rng';
 import { GHOSTS } from './content/ghosts';
 describe('content and deterministic stats', () => {
-  it('ships exactly two options for all twelve class slots', () => {
-    expect(ITEMS).toHaveLength(24);
+  it('ships exactly two options for all twenty class slots', () => {
+    expect(ITEMS).toHaveLength(40);
     for (const c of CLASS_IDS)
       for (const slot of SLOTS)
         expect(ITEMS.filter((i) => i.classId === c && i.slot === slot)).toHaveLength(2);
@@ -16,10 +16,10 @@ describe('content and deterministic stats', () => {
       id: 'p',
       ownerId: 'p',
       name: 'P',
-      classId: 'knight' as const,
+      classId: 'tank' as const,
       xp: 0,
       color: '#fff',
-      loadout: defaultLoadout('knight'),
+      loadout: defaultLoadout('tank'),
     };
     expect(deriveStats(c, 1)).toEqual({ hp: 140, mp: 25, atk: 19, mag: 3, def: 17, spd: 5 });
     expect(deriveStats({ ...c, xp: 999999 }, 1)).toEqual(deriveStats(c, 1));
@@ -32,8 +32,12 @@ describe('content and deterministic stats', () => {
   });
   it('has eight distinct fake players and two cheap ghosts per role', () => {
     expect(GHOSTS.filter((g) => !g.community)).toHaveLength(8);
-    for (const c of CLASS_IDS)
-      expect(GHOSTS.filter((g) => g.community && g.character.classId === c)).toHaveLength(2);
+    for (const role of ['tank', 'healer', 'dps'])
+      expect(
+        GHOSTS.filter((g) => g.community && CLASSES[g.character.classId].role === role),
+      ).toHaveLength(2);
+    // Every class can be met as a companion.
+    for (const c of CLASS_IDS) expect(GHOSTS.some((g) => g.character.classId === c)).toBe(true);
     expect(new Set(GHOSTS.map((g) => g.character.name)).size).toBe(14);
   });
 });

@@ -2,12 +2,16 @@ import * as THREE from 'three';
 import { CLASSES, GHOSTS, getFloor, isSolved, ENEMIES } from '@delver/rules';
 import type { GameState, Ghost, Point } from '@delver/rules';
 import { makeEnemySprite } from './sprites';
+import { billboard } from './billboard';
+import type { Billboard } from './billboard';
 import { DollSprite } from './doll-sprite';
 import { characterLook, pumpDolls } from '../paperdoll/looks';
 import { ghostLook, lookById, wandererLook, WANDERER_COUNT } from './cast';
 import {
   ANIMATED_PROPS,
+  PIXEL,
   THEMES,
+  leverTexture,
   capTexture,
   floorTexture,
   floorTheme,
@@ -68,13 +72,19 @@ export class World {
   private followers = new Map<string, DollSprite>();
   private trail: Point[] = [];
   private walkers: Walker[] = [];
-  private enemies = new Map<string, THREE.Sprite>();
+  private enemies = new Map<string, Billboard>();
   private rings = new Map<string, THREE.Mesh>();
   private enemyLabels = new Map<string, HTMLDivElement>();
   private threatMarkers = new Map<string, THREE.Mesh>();
-  private flickers: { sprite: THREE.Sprite; id: PropId }[] = [];
+  private flickers: { sprite: Billboard; id: PropId }[] = [];
   /** Name tags for landmarks and puzzle pieces, shown when the player is within `range`. */
   private signs: { el: HTMLDivElement; at: THREE.Vector3; range: number }[] = [];
+  /** Lever and brazier sprites by puzzle point, for feedback when one is used. */
+  private puzzleSprites: Billboard[] = [];
+  /** Each lever's resting and thrown art, so feedback can flash the right symbol. */
+  private leverArt: { off: THREE.Texture; on: THREE.Texture }[] = [];
+  private pulses: { mesh: THREE.Mesh; t: number }[] = [];
+  private bumps: { sprite: Billboard; base: number; t: number }[] = [];
   private playerMarker?: THREE.Mesh;
   private torch = new THREE.PointLight('#ffcf8a', 14, 9, 1.6);
   private raycaster = new THREE.Raycaster();
@@ -145,11 +155,7 @@ export class World {
   /** A billboard prop standing on the ground (or hung on a wall at `y`). */
   private propSprite(id: PropId, x: number, z: number, y = 0) {
     const p = prop(id, this.theme);
-    const sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: p.texture, transparent: true, alphaTest: 0.5 }),
-    );
-    sprite.center.set(0.5, 0);
-    sprite.scale.set(p.w, p.h, 1);
+    const sprite = billboard(p.texture, p.w, p.h);
     sprite.position.set(x, y, z);
     if (ANIMATED_PROPS.includes(id)) this.flickers.push({ sprite, id });
     return sprite;
@@ -158,11 +164,10 @@ export class World {
     for (const group of [this.level, this.dynamic, this.actors]) {
       group.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
-        if (mesh.geometry && !(obj instanceof THREE.Sprite)) mesh.geometry.dispose();
-        if (mesh.material && !(obj instanceof THREE.Sprite)) {
+        mesh.geometry?.dispose();
+        if (mesh.material)
           for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
             mat.dispose();
-        } else if (obj instanceof THREE.Sprite) obj.material.dispose();
       });
       group.clear();
     }
@@ -208,6 +213,9 @@ export class World {
     const lookKey = JSON.stringify(look);
     if (!this.player) {
       this.player = new DollSprite(look);
+      // Drawn after the companions, which don't write depth, so the leader is never hidden behind
+      // its own party; walls and strangers still cover it as usual.
+      this.player.sprite.renderOrder = 1;
       this.actors.add(this.player.sprite);
       this.player.sprite.position.set(this.target.x, 0, this.target.z);
       this.playerMarker = this.affiliationMarker('#e5ba72', 32);
@@ -250,6 +258,7 @@ export class World {
       for (const m of members)
         if (!this.followers.has(m.id)) {
           const doll = new DollSprite(lookById(m.id, m.classId));
+          doll.sprite.material.depthWrite = false;
           const at = this.trailPoint((this.followers.size + 1) * FOLLOW_GAP);
           doll.sprite.position.set(at.x, 0, at.z);
           this.actors.add(doll.sprite);
@@ -285,8 +294,7 @@ export class World {
     if (puzzleKey === this.puzzleKey) return;
     this.puzzleKey = puzzleKey;
     this.dynamic.traverse((o) => {
-      if (o instanceof THREE.Sprite) o.material.dispose();
-      else if (o instanceof THREE.Mesh) {
+      if (o instanceof THREE.Mesh) {
         o.geometry.dispose();
         (o.material as THREE.Material).dispose();
       }
@@ -332,20 +340,26 @@ export class World {
         this.dynamic.add(mesh);
       }
     }
+    this.puzzleSprites = [];
     if (p.type === 'levers')
-      def.puzzlePoints.forEach((pt, i) =>
-        this.dynamic.add(
-          this.propSprite(
-            p.sequence.slice(0, p.progress).includes(i) ? 'leverOn' : 'lever',
-            pt.x,
-            pt.z,
-          ),
-        ),
-      );
+      def.puzzlePoints.forEach((pt, i) => {
+        const art = {
+          off: leverTexture(def.puzzleLabels[i], false, this.theme),
+          on: leverTexture(def.puzzleLabels[i], true, this.theme),
+        };
+        this.leverArt[i] = art;
+        const held = p.sequence.slice(0, p.progress).includes(i);
+        const sprite = billboard(held ? art.on : art.off, 28 * PIXEL, 38 * PIXEL);
+        sprite.position.set(pt.x, 0, pt.z);
+        this.puzzleSprites[i] = sprite;
+        this.dynamic.add(sprite);
+      });
     if (p.type === 'braziers')
-      def.puzzlePoints.forEach((pt, i) =>
-        this.dynamic.add(this.propSprite(p.lit[i] ? 'brazierLit' : 'brazier', pt.x, pt.z)),
-      );
+      def.puzzlePoints.forEach((pt, i) => {
+        const sprite = this.propSprite(p.lit[i] ? 'brazierLit' : 'brazier', pt.x, pt.z);
+        this.puzzleSprites[i] = sprite;
+        this.dynamic.add(sprite);
+      });
     if (p.type === 'key') {
       const pt = def.puzzlePoints[0];
       this.dynamic.add(this.propSprite(p.collected ? 'pedestalEmpty' : 'pedestal', pt.x, pt.z));
@@ -802,8 +816,58 @@ export class World {
         true,
       );
     }
+    this.stepFeedback(delta);
     if (this.portal) this.portal.rotation.y = Math.sin(time * 0.6) * 0.25;
     this.renderer.render(this.scene, this.camera);
+  }
+  /**
+   * Answers a lever or brazier: a ring flashes green (it held) or red (it sprang back), and the
+   * piece jolts. A lever that sprang back is shown thrown for a moment first, so the pull reads.
+   */
+  puzzleFeedback(index: number, ok: boolean, color = ok ? '#9ee7b3' : '#ef8877') {
+    const sprite = this.puzzleSprites[index];
+    if (!sprite) return;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.22, 0.34, 32),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(sprite.position.x, 0.07, sprite.position.z);
+    this.level.add(ring);
+    this.pulses.push({ mesh: ring, t: 0 });
+    this.bumps.push({ sprite, base: sprite.scale.y, t: 0 });
+    const art = this.leverArt[index];
+    if (!ok && art && sprite.material.map === art.off) {
+      sprite.material.map = art.on;
+      window.setTimeout(() => {
+        if (sprite.parent) sprite.material.map = art.off;
+      }, 420);
+    }
+  }
+  private stepFeedback(dt: number) {
+    this.pulses = this.pulses.filter((p) => {
+      p.t += dt;
+      const k = p.t / 0.9;
+      p.mesh.scale.setScalar(1 + k * 3.5);
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = 0.9 * Math.max(0, 1 - k);
+      if (k < 1) return true;
+      this.level.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+      return false;
+    });
+    this.bumps = this.bumps.filter((b) => {
+      b.t += dt;
+      const k = Math.min(1, b.t / 0.45);
+      b.sprite.scale.y = b.base * (1 + 0.14 * Math.sin(b.t * 28) * (1 - k));
+      return k < 1;
+    });
   }
   private sign(text: string, at: Point, height: number, range: number, done = false) {
     const el = document.createElement('div');

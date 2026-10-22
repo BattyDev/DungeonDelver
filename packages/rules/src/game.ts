@@ -1,5 +1,5 @@
 import { clone } from './clone';
-import { CLASSES } from './classes';
+import { CLASSES, RACE_IDS, SEX_IDS } from './classes';
 import { ITEMS, defaultLoadout } from './items';
 import { GHOSTS } from './content/ghosts';
 import { getFloor } from './content/floors';
@@ -132,6 +132,18 @@ export function transition(state: GameState, command: GameCommand): GameState {
           ...state.progress.player,
           loadout: { ...state.progress.player.loadout, [item.slot]: item.id },
         },
+      },
+    };
+  }
+  if (command.type === 'changeAppearance') {
+    const { race, sex } = command.appearance ?? {};
+    // Like class and gear, a new look is chosen in the hub, and only from known bodies.
+    if (state.phase !== 'hub' || !RACE_IDS.includes(race) || !SEX_IDS.includes(sex)) return state;
+    return {
+      ...state,
+      progress: {
+        ...state.progress,
+        player: { ...state.progress.player, appearance: { race, sex } },
       },
     };
   }

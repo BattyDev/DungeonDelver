@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
+  createFloor,
+  getFloor,
   newProgress,
   startRun,
   startCombat,
@@ -53,7 +55,7 @@ test('class, hiring, loadout, reload, and confirmed reset', async ({ page }) => 
   expect(errors).toEqual([]);
 });
 test('keyboard pushes blocks and the floor persists', async ({ page }) => {
-  const progress = newProgress('P', 'knight', 1),
+  const progress = newProgress('P', 'tank', 1),
     run = startRun(progress),
     floor = run.floors[1];
   floor.position = { x: 17, z: 16.1 };
@@ -72,7 +74,7 @@ test('keyboard pushes blocks and the floor persists', async ({ page }) => {
   await expect(page.locator('#left')).toContainText('Push all 3 stones');
 });
 test('Mend can explicitly target a selected ally', async ({ page }) => {
-  const progress = newProgress('P', 'cleric', 42);
+  const progress = newProgress('P', 'healer', 42);
   progress.hires = [GHOSTS[0]];
   const run = startRun(progress),
     floor = run.floors[1];
@@ -94,7 +96,7 @@ test('Mend can explicitly target a selected ally', async ({ page }) => {
 test('walking is continuous, diagonal speed is normalized, and fractional position reloads', async ({
   page,
 }) => {
-  const progress = newProgress('Walker', 'rogue', 42);
+  const progress = newProgress('Walker', 'samurai', 42);
   const run = startRun(progress),
     floor = run.floors[1];
   floor.patrols.forEach((p) => (p.pauseTicks = 9999));
@@ -120,7 +122,7 @@ test('walking is continuous, diagonal speed is normalized, and fractional positi
   await expect(page.locator('#stage canvas')).toBeVisible();
 });
 test('sanctuary portal round trip and corrupt-save preservation', async ({ page }) => {
-  const progress = newProgress('P', 'rogue', 2);
+  const progress = newProgress('P', 'samurai', 2);
   progress.unlockedPortals = [5];
   progress.checkpoint = 5;
   await fixture(page, { phase: 'safeRoom', progress });
@@ -139,7 +141,7 @@ test('sanctuary portal round trip and corrupt-save preservation', async ({ page 
 });
 
 function queuedCombat(): Extract<GameState, { phase: 'combat' }> {
-  const progress = newProgress('Planner', 'knight', 42);
+  const progress = newProgress('Planner', 'tank', 42);
   progress.hires = [GHOSTS[0]];
   const run = startRun(progress),
     floor = run.floors[1];
@@ -174,7 +176,7 @@ test('combat pre-input can be replaced, retargeted, canceled, and executes once 
   await page.getByRole('button', { name: 'Cancel queued action' }).click({ force: true });
   await expect(page.locator('.combat-queue')).not.toContainText('Queued:');
   await page
-    .getByRole('button', { name: `Shield Bash · ${CLASSES.knight.cost}` })
+    .getByRole('button', { name: `Shield Bash · ${CLASSES.tank.cost}` })
     .click({ force: true });
   await page.locator('[data-action="target"][data-id="moss-1"]').click({ force: true });
   expect((await saved(page)).combat.decisions).toHaveLength(0);
@@ -186,7 +188,7 @@ test('combat pre-input can be replaced, retargeted, canceled, and executes once 
   expect(combat.decisions).toHaveLength(1);
   expect(combat.decisions[0].action).toEqual({ type: 'skill', target: 'moss-1' });
   expect(combat.fighters.find((f: { player: boolean }) => f.player).mp).toBe(
-    mp - CLASSES.knight.cost,
+    mp - CLASSES.tank.cost,
   );
   await expect(page.locator('.combat-queue')).not.toContainText('Queued:');
 });
@@ -247,6 +249,17 @@ test('a chosen race and sex carry into the hall, and the studio sends a look to 
       sex: 'M',
     });
   await expect(page.locator('#location-name')).toContainText('Great Hall');
+  // The loadout changes who you are as well as what you carry.
+  await page.getByRole('button', { name: 'Manage loadout' }).click();
+  await page.locator('.modal [data-action="look-race"][data-id="elf"]').click();
+  await page.locator('.modal [data-action="look-class"][data-id="mage"]').click();
+  await expect
+    .poll(async () => {
+      const player = (await saved(page)).progress.player;
+      return [player.appearance.race, player.appearance.sex, player.classId];
+    })
+    .toEqual(['elf', 'M', 'mage']);
+  await page.getByRole('button', { name: 'Ready for adventure' }).click();
   await page.goto('./studio.html');
   await expect(page.locator('#room canvas')).toBeVisible();
   await page.getByRole('button', { name: 'Dwarf' }).click();
@@ -255,7 +268,7 @@ test('a chosen race and sex carry into the hall, and the studio sends a look to 
   // A preview compares the current game look with the drawing before anything is sent.
   await expect(page.locator('#pvNew')).toBeVisible();
   await page.locator('#confirmSend').click();
-  await expect(page.locator('#toast')).toContainText('dwarf male Knight');
+  await expect(page.locator('#toast')).toContainText('dwarf male Tank');
   const wardrobe = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('dungeon-delver.wardrobe.v1') ?? '{}'),
   );
@@ -266,4 +279,21 @@ test('a chosen race and sex carry into the hall, and the studio sends a look to 
   await page.getByRole('link', { name: '← Gathering Hall' }).click();
   await expect(page.locator('.party-member')).toHaveCount(1);
   expect(errors).toEqual([]);
+});
+
+test('levers answer every pull: held, or sprung back with the sequence reset', async ({ page }) => {
+  const progress = newProgress('Puller', 'tank', 3);
+  const run = startRun(progress);
+  const floor = createFloor(getFloor(2));
+  floor.patrols.forEach((p) => (p.pauseTicks = 99999));
+  floor.position = { x: 10, z: 24 };
+  run.floors[2] = floor;
+  await fixture(page, { phase: 'floor', progress, run, floor });
+  await expect(page.locator('.interaction')).toContainText('Pull the Tide lever');
+  await page.keyboard.press('e');
+  await expect(page.locator('.toast')).toContainText('Tide lever locks into place · 1 / 5');
+  await expect(page.locator('#left')).toContainText('Levers 1 / 5');
+  // Pulling Tide again restarts the order, with Tide held as the first lever.
+  await page.keyboard.press('e');
+  await expect(page.locator('.toast')).toContainText('Tide lever holds · 1 / 5');
 });

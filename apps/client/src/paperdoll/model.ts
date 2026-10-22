@@ -200,7 +200,7 @@ export const ANIMS: Record<AnimId, AnimDef> = {
   },
 };
 
-/** Studio classes. The game's three classes borrow the look of tank, healer and samurai. */
+/** The five classes, shared by the studio and the game. */
 export type LookClass = 'tank' | 'healer' | 'archer' | 'mage' | 'samurai';
 export const LOOK_CLASSES: Record<LookClass, { label: string; anims: AnimId[] }> = {
   tank: { label: 'Tank', anims: ['idle', 'walk', 'attack', 'block', 'hurt', 'death'] },
@@ -211,9 +211,11 @@ export const LOOK_CLASSES: Record<LookClass, { label: string; anims: AnimId[] }>
 };
 export const LOOK_CLASS_IDS = Object.keys(LOOK_CLASSES) as LookClass[];
 export const GAME_CLASS_LOOK: Record<ClassId, LookClass> = {
-  knight: 'tank',
-  cleric: 'healer',
-  rogue: 'samurai',
+  tank: 'tank',
+  healer: 'healer',
+  archer: 'archer',
+  mage: 'mage',
+  samurai: 'samurai',
 };
 
 export type Slot =

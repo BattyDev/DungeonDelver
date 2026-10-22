@@ -2,6 +2,7 @@
 // walks around in eight directions and tries out combat moves.
 import * as THREE from 'three';
 import { DollSprite } from '../scene/doll-sprite';
+import { billboard } from '../scene/billboard';
 import { floorTexture, prop, wallTexture, capTexture } from '../scene/pixels';
 import type { PropId } from '../scene/pixels';
 import type { AnimId } from '../paperdoll/model';
@@ -110,11 +111,7 @@ export class ChangingRoom {
     ];
     for (const [id, x, z, y] of props) {
       const p = prop(id, 'hall');
-      const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: p.texture, transparent: true, alphaTest: 0.5 }),
-      );
-      sprite.center.set(0.5, 0);
-      sprite.scale.set(p.w, p.h, 1);
+      const sprite = billboard(p.texture, p.w, p.h);
       sprite.position.set(x, y, z);
       this.scene.add(sprite);
     }

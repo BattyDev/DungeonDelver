@@ -36,6 +36,7 @@ import { enemyTexture } from './scene/sprites';
 import { Keyboard } from './input/keyboard';
 import { CombatStage } from './ui/combat-stage';
 import { Minimap } from './ui/minimap';
+import { sfx } from './ui/sfx';
 import { icon, escapeHtml as esc } from './ui/icons';
 import { HALL, HALL_MAP, hallRoomAt } from './scene/hall';
 import { canStand, moveOnGrid } from './scene/grid';
@@ -49,13 +50,15 @@ const avatarLook = (look: Look, classId: ClassId) =>
 const characterAvatar = (c: Pick<Character, 'id' | 'classId' | 'appearance'>, player: boolean) =>
   avatarLook(player ? characterLook(c, true) : lookById(c.id, c.classId), c.classId);
 const classCopy: Record<ClassId, string> = {
-  knight: 'Hold the line. Protect your party with steel and stubborn resolve.',
-  cleric: 'Keep hope alive. Mend your allies and bring everyone home.',
-  rogue: 'Strike first. Slip past danger, or cut straight through it.',
+  tank: 'Hold the line. Protect your party with steel and stubborn resolve.',
+  healer: 'Keep hope alive. Mend your allies and bring everyone home.',
+  archer: 'Strike from afar. Arrows that slip through any armor.',
+  mage: 'Bend the arcane. Bolts of raw magic that hit hardest of all.',
+  samurai: 'Strike first. One clean cut, then another.',
 };
 export class Controller {
   state: GameState = { phase: 'classSelect' };
-  private selectedClass: ClassId = 'knight';
+  private selectedClass: ClassId = 'tank';
   private selectedRace: Race = 'human';
   private selectedSex: Sex = 'F';
   private world?: World;
@@ -214,7 +217,7 @@ export class Controller {
           'idle',
           7,
         );
-        return `<button class="class-card ${this.selectedClass === id ? 'selected' : ''}" data-action="select-class" data-id="${id}" style="--class-color:${c.color}" aria-pressed="${this.selectedClass === id}"><div class="class-art"><img class="pixel-art" src="${image}" alt="${RACES[this.selectedRace].label} ${c.name}"><span class="selection-mark">${this.selectedClass === id ? icon('check', 13) : ''}</span></div><div class="class-card-body"><span class="eyebrow" style="color:${c.color}">${c.role === 'dps' ? 'Damage dealer' : c.role}</span><h2>${c.name}</h2><p>${classCopy[id]}</p><div class="class-skill">${icon(id === 'knight' ? 'shield' : id === 'cleric' ? 'heart' : 'sword', 15)} ${c.skill}<span class="muted">· ${c.cost} MP</span></div></div></button>`;
+        return `<button class="class-card ${this.selectedClass === id ? 'selected' : ''}" data-action="select-class" data-id="${id}" style="--class-color:${c.color}" aria-pressed="${this.selectedClass === id}"><div class="class-art"><img class="pixel-art" src="${image}" alt="${RACES[this.selectedRace].label} ${c.name}"><span class="selection-mark">${this.selectedClass === id ? icon('check', 13) : ''}</span></div><div class="class-card-body"><span class="eyebrow" style="color:${c.color}">${c.role === 'dps' ? 'Damage dealer' : c.role}</span><h2>${c.name}</h2><p>${classCopy[id]}</p><div class="class-skill">${icon(id === 'tank' ? 'shield' : id === 'healer' ? 'heart' : 'sword', 15)} ${c.skill}<span class="muted">· ${c.cost} MP</span></div></div></button>`;
       },
     ).join(
       '',
@@ -471,16 +474,24 @@ export class Controller {
     }
     const index = def.puzzlePoints.findIndex((p) => distance(s.floor.position, p) <= 1.5);
     if (index >= 0 && s.floor.puzzle.type === 'levers') {
-      this.dispatch({ type: 'puzzle', action: { type: 'lever', index } });
-      this.toast(
-        this.state.phase === 'floor' && isSolved(this.state.floor.puzzle)
-          ? 'The seal opens. Find the green stairs.'
-          : 'The lever clicks. Check your journal for rune order.',
-      );
+      this.pullLever(index);
       return;
     }
     if (index >= 0 && s.floor.puzzle.type === 'braziers') {
       this.dispatch({ type: 'puzzle', action: { type: 'brazier', index } });
+      const after = this.state.phase === 'floor' ? this.state.floor.puzzle : undefined;
+      if (after?.type !== 'braziers') return;
+      const lit = after.lit.filter(Boolean).length;
+      this.world?.puzzleFeedback(index, true, after.lit[index] ? '#f0a04a' : '#8d8aa0');
+      if (isSolved(after)) {
+        sfx('done');
+        this.toast(`All ${lit} braziers burn. The seal opens. Find the green stairs.`);
+      } else {
+        sfx('click');
+        this.toast(
+          `The ${def.puzzleLabels[index]} brazier and its bound flames change · ${lit} / ${after.lit.length} lit`,
+        );
+      }
       return;
     }
     if (distance(s.floor.position, def.stairs) <= 1.1 && !isSolved(s.floor.puzzle)) {
@@ -488,6 +499,40 @@ export class Controller {
       return;
     }
     this.dispatch({ type: 'interact' });
+  }
+  /** Pulls a lever and says plainly whether it held, started over, or sprang back. */
+  private pullLever(index: number) {
+    const s = this.state;
+    if (s.phase !== 'floor' || s.floor.puzzle.type !== 'levers') return;
+    const def = getFloor(s.floor.id),
+      before = s.floor.puzzle.progress,
+      total = s.floor.puzzle.sequence.length,
+      name = def.puzzleLabels[index];
+    this.dispatch({ type: 'puzzle', action: { type: 'lever', index } });
+    const after = this.state.phase === 'floor' ? this.state.floor.puzzle : undefined;
+    if (after?.type !== 'levers') return;
+    if (isSolved(after)) {
+      this.world?.puzzleFeedback(index, true);
+      sfx('done');
+      this.toast(`All ${total} levers hold. The seal opens. Find the green stairs.`);
+    } else if (after.progress > before) {
+      this.world?.puzzleFeedback(index, true);
+      sfx('good');
+      this.toast(`The ${name} lever locks into place · ${after.progress} / ${total}`);
+    } else if (after.progress === 1) {
+      // Wrong order, but this lever begins the sequence, so it holds as the new first pull.
+      this.world?.puzzleFeedback(index, true);
+      sfx('good');
+      this.toast(
+        `Out of order: the other levers reset, but the ${name} lever holds · 1 / ${total}`,
+      );
+    } else {
+      this.world?.puzzleFeedback(index, false);
+      sfx('bad');
+      this.toast(
+        `The ${name} lever springs back${before === 1 ? ' and the held lever resets' : before ? ` and all ${before} held levers reset` : ''}. ${s.floor.clueRead ? 'Check the order in your journal.' : 'The rune tablet near the entrance gives the order.'}`,
+      );
+    }
   }
   /** Saves, then walks through the wardrobe into the Paper Doll Studio. */
   private enterChangingRoom() {
@@ -694,13 +739,14 @@ export class Controller {
     this.combatStage?.draw(delta);
     requestAnimationFrame((t) => this.frame(t));
   }
-  private openModal(html: string) {
+  /** `variant` widens or compacts the dialog, e.g. 'wide' for the roster. */
+  private openModal(html: string, variant = '') {
     this.closeModal();
     this.path = [];
     this.keyboard.held.clear();
     this.modal = document.createElement('div');
     this.modal.className = 'modal-backdrop';
-    this.modal.innerHTML = `<section class="modal" role="dialog" aria-modal="true" aria-label="Dungeon Delver"><div class="modal-header"><span class="eyebrow">Dungeon Delver</span><button data-action="close" class="subtle" aria-label="Close dialog">${icon('close', 18)}</button></div>${html}</section>`;
+    this.modal.innerHTML = `<section class="modal ${variant}" role="dialog" aria-modal="true" aria-label="Dungeon Delver"><div class="modal-header"><span class="eyebrow">Dungeon Delver</span><button data-action="close" class="subtle" aria-label="Close dialog">${icon('close', 18)}</button></div>${html}</section>`;
     this.modal.addEventListener('click', (e) => {
       if (e.target === this.modal) {
         this.closeModal();
@@ -738,14 +784,16 @@ export class Controller {
     const full = this.state.progress.hires.length >= 3;
     const canHire =
       this.state.phase === 'hub' && !hired && !full && this.state.progress.gold >= g.price;
+    const look = lookById(g.id, g.character.classId);
+    // Two columns, portrait and voice beside stats and gear, so the whole offer fits on one screen.
     this.openModal(
-      `<div class="ghost-title">${characterAvatar(g.character, false)}<div><span class="eyebrow">${g.community ? 'Community companion' : `Offline snapshot of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${CLASSES[g.character.classId].name} · ${g.style}</small></div></div><blockquote>“${g.dialogue}”</blockquote><div class="stat-grid">${[
+      `<div class="hire-card"><div class="hire-who"><img class="pixel-art hire-portrait" src="${lookImage(look, 'idle', 0)}" alt=""><span class="eyebrow">${g.community ? 'Community companion' : `Offline snapshot of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${RACES[look.race].label} ${CLASSES[g.character.classId].name} · ${g.style}</small><blockquote>“${g.dialogue}”</blockquote></div><div class="hire-what"><div class="stat-grid">${[
         ['HP', stats.hp],
         ['ATK', stats.atk],
         ['DEF', stats.def],
         ['Runs', g.runs],
         ['Revives', g.revives],
-        ['Deepest floor', g.deepestFloor],
+        ['Deepest', g.deepestFloor],
       ]
         .map(([label, value]) => `<div><strong>${value}</strong>${label}</div>`)
         .join('')}</div><h3>What they bring</h3><div class="gear-list">${equipment(
@@ -757,34 +805,53 @@ export class Controller {
         )
         .join(
           '',
-        )}</div><div class="modal-actions"><span class="gold">${icon('coin', 18)} ${g.price} gold <small>up front</small></span><button class="primary" data-action="hire" data-id="${g.id}" ${canHire ? '' : 'disabled'}>${hired ? 'Already in party' : full ? 'Party is full' : this.state.progress.gold < g.price ? 'Not enough gold' : this.state.phase !== 'hub' ? 'Hire in the hub' : 'Hire companion'} ${icon('arrow', 16)}</button></div>`,
+        )}</div><div class="modal-actions"><button data-action="roster">${icon('arrow', 14)} All companions</button><span class="gold">${icon('coin', 18)} ${g.price} gold <small>up front</small></span><button class="primary" data-action="hire" data-id="${g.id}" ${canHire ? '' : 'disabled'}>${hired ? 'Already in party' : full ? 'Party is full' : this.state.progress.gold < g.price ? 'Not enough gold' : this.state.phase !== 'hub' ? 'Hire in the hub' : 'Hire companion'} ${icon('arrow', 16)}</button></div></div></div>`,
+      'wide hire',
     );
   }
   private openRoster() {
     if (this.state.phase === 'classSelect') return;
-    const hires = this.state.progress.hires;
+    const p = this.state.progress;
+    // A grid of portrait cards: every companion is visible at once, no scrolling.
     this.openModal(
-      `<span class="eyebrow">A companion for every journey</span><h2>Find your company.</h2><p class="muted">Real character. Borrowed courage. Fees are paid up front; companions stay for one run.</p><h3>Wandering adventurers</h3><div class="roster">${GHOSTS.filter(
+      `<div class="roster-head"><div><span class="eyebrow">A companion for every journey</span><h2>Find your company.</h2></div><p class="muted">Fees are paid up front; companions stay for one run. Party ${p.hires.length + 1} / 4 · ${icon('coin', 13)} ${p.gold} gold</p></div><h3>Wandering adventurers</h3><div class="roster">${GHOSTS.filter(
         (g) => !g.community,
       )
-        .map((g) => this.rosterRow(g, hires))
+        .map((g) => this.rosterRow(g, p.hires))
         .join(
           '',
-        )}</div><h3>Community companions</h3><p class="muted">Simple tactics, a small price. Two companions of every role, always available.</p><div class="roster">${GHOSTS.filter(
+        )}</div><h3>Community companions <small>Simple tactics, a small price, always available</small></h3><div class="roster community">${GHOSTS.filter(
         (g) => g.community,
       )
-        .map((g) => this.rosterRow(g, hires))
+        .map((g) => this.rosterRow(g, p.hires))
         .join('')}</div>`,
+      'wide',
     );
   }
   private rosterRow(g: Ghost, hires: Ghost[]) {
-    return `<button data-action="ghost" data-id="${g.id}"><span>${g.character.name}<small>${CLASSES[g.character.classId].name} · ${g.style}</small></span><span class="gold">${hires.some((h) => h.id === g.id) ? icon('check', 16) : `${g.price} ${icon('coin', 13)}`}</span></button>`;
+    const hired = hires.some((h) => h.id === g.id);
+    return `<button class="roster-card ${hired ? 'hired' : ''}" data-action="ghost" data-id="${g.id}" style="--class-color:${CLASSES[g.character.classId].color}"><img class="pixel-art" src="${lookImage(lookById(g.id, g.character.classId), 'idle', 0)}" alt=""><strong>${g.character.name}</strong><small>${CLASSES[g.character.classId].name} · ${g.style.replace('Community • ', '')}</small><span class="gold">${hired ? `${icon('check', 14)} In party` : g.price ? `${g.price} ${icon('coin', 12)}` : 'Free'}</span></button>`;
   }
   private openLoadout() {
     if (this.state.phase !== 'hub') return;
     const c = this.state.progress.player;
+    const look = characterLook(c, true);
+    const picker = (label: string, action: string, options: [string, string, boolean][]) =>
+      `<div class="look-row" role="group" aria-label="${label}"><span class="eyebrow">${label}</span>${options.map(([id, name, on]) => `<button type="button" class="chip ${on ? 'selected' : ''}" data-action="${action}" data-id="${id}" aria-pressed="${on}">${name}</button>`).join('')}</div>`;
     this.openModal(
-      `<span class="eyebrow">Prepared for the depths</span><h2>Your loadout.</h2><p class="muted">Choose one item in each slot. Equipment and class can only change in the hub.</p><label for="class-change" class="eyebrow">Calling</label><select id="class-change">${CLASS_IDS.map((id) => `<option value="${id}" ${id === c.classId ? 'selected' : ''}>${CLASSES[id].name}</option>`).join('')}</select>${SLOTS.map(
+      `<span class="eyebrow">Prepared for the depths</span><h2>Your loadout.</h2><p class="muted">Change who you are and what you carry. Appearance, class and equipment can only change in the hub; changing class resets your equipment to that class's starting gear.</p><div class="look-editor"><img class="pixel-art look-preview" src="${lookImage(look, 'idle', 7)}" alt="${RACES[look.race].label} ${SEXES[look.sex].label.toLowerCase()} ${CLASSES[c.classId].name}"><div class="look-pickers">${picker(
+        'Race',
+        'look-race',
+        RACE_IDS.map((r) => [r, RACES[r].label, r === look.race]),
+      )}${picker(
+        'Sex',
+        'look-sex',
+        SEX_IDS.map((x) => [x, SEXES[x].label, x === look.sex]),
+      )}${picker(
+        'Calling',
+        'look-class',
+        CLASS_IDS.map((id) => [id, CLASSES[id].name, id === c.classId]),
+      )}<button type="button" class="chip studio-link" data-action="changing-room">${icon('gear', 13)} Draw this look in the Changing Room</button></div></div>${SLOTS.map(
         (slot) =>
           `<h3>${slot === 'offhand' ? 'Off-hand' : slot[0].toUpperCase() + slot.slice(1)}</h3><div class="gear-options">${ITEMS.filter(
             (i) => i.classId === c.classId && i.slot === slot,
@@ -798,16 +865,23 @@ export class Controller {
         '',
       )}<button class="primary wide" data-action="close">Ready for adventure ${icon('check', 15)}</button>`,
     );
-    this.modal!.querySelector<HTMLSelectElement>('#class-change')!.addEventListener(
-      'change',
-      (e) => {
-        this.dispatch({
-          type: 'changeClass',
-          classId: (e.target as HTMLSelectElement).value as ClassId,
-        });
-        this.openLoadout();
-      },
-    );
+  }
+  /** Applies a race, sex or class choice from the loadout and redraws it in place. */
+  private restyle(change: { race?: Race; sex?: Sex; classId?: ClassId }) {
+    if (this.state.phase !== 'hub') return;
+    const scroll = this.modal?.querySelector('.modal')?.scrollTop ?? 0;
+    if (change.classId && change.classId !== this.state.progress.player.classId)
+      this.dispatch({ type: 'changeClass', classId: change.classId });
+    if (change.race || change.sex) {
+      const current = characterLook(this.state.progress.player);
+      this.dispatch({
+        type: 'changeAppearance',
+        appearance: { race: change.race ?? current.race, sex: change.sex ?? current.sex },
+      });
+    }
+    this.openLoadout();
+    const modal = this.modal?.querySelector('.modal');
+    if (modal) modal.scrollTop = scroll;
   }
   private openJournal() {
     const s = this.state;
@@ -888,7 +962,7 @@ export class Controller {
     if (this.state.phase === 'combat' && this.queuedAction && 'target' in this.queuedAction) {
       const friendly =
         this.queuedAction.type === 'item' ||
-        (this.queuedAction.type === 'skill' && this.state.progress.player.classId === 'cleric');
+        (this.queuedAction.type === 'skill' && this.state.progress.player.classId === 'healer');
       const target = this.state.combat.fighters.find(
         (f) => f.id === id && f.hp > 0 && f.team === (friendly ? 'party' : 'enemy'),
       );
@@ -905,7 +979,7 @@ export class Controller {
     let action: Action;
     if (type === 'defend' || type === 'flee') action = { type };
     else {
-      const friendly = type === 'item' || (type === 'skill' && actor.classId === 'cleric');
+      const friendly = type === 'item' || (type === 'skill' && actor.classId === 'healer');
       const selected = s.combat.fighters.find(
         (f) =>
           f.id === this.selectedTarget && f.hp > 0 && f.team === (friendly ? 'party' : 'enemy'),
@@ -948,6 +1022,15 @@ export class Controller {
       case 'toggle-hud':
         this.hudCollapsed = !this.hudCollapsed;
         this.renderLeft();
+        break;
+      case 'look-race':
+        this.restyle({ race: id as Race });
+        break;
+      case 'look-sex':
+        this.restyle({ sex: id as Sex });
+        break;
+      case 'look-class':
+        this.restyle({ classId: id as ClassId });
         break;
       case 'changing-room':
         this.enterChangingRoom();

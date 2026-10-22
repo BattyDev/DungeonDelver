@@ -1,4 +1,4 @@
-import { CLASS_IDS, RACE_IDS, SEX_IDS } from './classes';
+import { CLASS_IDS, LEGACY_CLASS_IDS, RACE_IDS, SEX_IDS } from './classes';
 import { ITEMS, SLOTS } from './items';
 import { getFloor } from './content/floors';
 import { walkable } from './floors/pressure-plates';
@@ -254,6 +254,16 @@ function combat(x: unknown): boolean {
       fighters.some((f) => f.id === order[x.cursor as number] && num(f.hp) && f.hp > 0))
   );
 }
+/** Saves from before the five classes name knights, clerics and rogues; rename them in place. */
+function migrateClasses(x: unknown): void {
+  if (Array.isArray(x)) x.forEach(migrateClasses);
+  else if (object(x))
+    for (const [k, v] of Object.entries(x)) {
+      if (k === 'classId' && typeof v === 'string' && LEGACY_CLASS_IDS[v])
+        x[k] = LEGACY_CLASS_IDS[v];
+      else migrateClasses(v);
+    }
+}
 export function parseSave(raw: string): SaveData {
   let value: unknown;
   try {
@@ -265,6 +275,7 @@ export function parseSave(raw: string): SaveData {
     throw new Error('This save version is unsupported. Your stored save has been preserved.');
   const s = value.state;
   if (!object(s)) throw new Error('Save state is missing.');
+  migrateClasses(s);
   let valid = s.phase === 'classSelect';
   if (s.phase === 'hub' || s.phase === 'safeRoom') valid = progress(s.progress);
   if (s.phase === 'floor' || s.phase === 'combat') {

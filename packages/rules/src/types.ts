@@ -1,4 +1,4 @@
-export type ClassId = 'knight' | 'cleric' | 'rogue';
+export type ClassId = 'tank' | 'healer' | 'archer' | 'mage' | 'samurai';
 export type Role = 'tank' | 'healer' | 'dps';
 export type Race = 'human' | 'orc' | 'elf' | 'dwarf' | 'gnome';
 export type Sex = 'F' | 'M';
@@ -220,6 +220,7 @@ export type GameCommand =
   | { type: 'dismiss'; ghostId: string }
   | { type: 'equip'; itemId: string }
   | { type: 'changeClass'; classId: ClassId }
+  | { type: 'changeAppearance'; appearance: Appearance }
   | { type: 'startRun' }
   | { type: 'portal' }
   | { type: 'reset' }

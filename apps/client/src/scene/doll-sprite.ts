@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { billboard } from './billboard';
+import type { Billboard } from './billboard';
 import { ANIMS, F, dirIndex } from '../paperdoll/model';
 import type { AnimId } from '../paperdoll/model';
 import { dollFor } from '../paperdoll/looks';
@@ -12,7 +14,7 @@ export const DOLL_SIZE = 1.85;
  * and plays one-shot combat animations on request.
  */
 export class DollSprite {
-  readonly sprite: THREE.Sprite;
+  readonly sprite: Billboard;
   private canvas = document.createElement('canvas');
   private ctx: CanvasRenderingContext2D;
   private texture: THREE.CanvasTexture;
@@ -31,12 +33,8 @@ export class DollSprite {
     this.texture.magFilter = THREE.NearestFilter;
     this.texture.minFilter = THREE.NearestFilter;
     this.texture.generateMipmaps = false;
-    this.sprite = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: this.texture, transparent: true, alphaTest: 0.5 }),
-    );
     // Feet sit on row 62.5 of the frame: anchor there so position.y is the ground.
-    this.sprite.center.set(0.5, 1.5 / F);
-    this.sprite.scale.set(size, size, 1);
+    this.sprite = billboard(this.texture, size, size, 1.5 / F);
     this.doll = 'race' in look ? dollFor(look) : look;
     this.doll.warm();
     this.draw();
@@ -112,5 +110,6 @@ export class DollSprite {
   dispose() {
     this.texture.dispose();
     this.sprite.material.dispose();
+    this.sprite.geometry.dispose();
   }
 }

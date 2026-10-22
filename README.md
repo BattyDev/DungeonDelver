@@ -51,7 +51,7 @@ Characters are 64 × 64 pixel paper dolls: a base body, hair and class gear laye
 
 - The studio (`studio.html`) edits layers per race and sex, previews them in a walk-around changing room (auto walk, WASD, and a button for each combat move), and exports sheets, a zip with a manifest, or a project file.
 - **Send to game** stores the current body and class's sheets in this browser (`dungeon-delver.wardrobe.v1`). The game uses them for your own character when its race, sex and class match; everyone else keeps the default look. Project › In the game lists sent looks and reverts them.
-- Studio classes map to the game's: Tank → Knight, Healer → Cleric, Samurai → Rogue. Archer and Mage looks can be drawn and sent but no game class uses them yet.
+- The studio and the game share the same five classes, so any look drawn for a class can be sent and played.
 - The studio has zoom (+, −, 0, or Ctrl + wheel) with Space-drag panning, a play button (P), onion skins for the previous (red) and next (green) frames, the race's skin and hair plus recent colors beside the palette, a side-by-side preview before Send to game, and a shortcut list on <kbd>?</kbd>. The ghost overlay defaults to an outline.
 - Combat plays the drawn animations: attackers lunge and play attack, slash or heal; targets play hurt or death, with damage numbers.
 
@@ -66,14 +66,15 @@ World tiles, walls and props are also generated pixel art (`scene/pixels.ts`), t
 `packages/rules` has no runtime dependencies or browser/rendering imports. All state is serializable JSON. A seeded Mulberry32 RNG is passed through state; no game code uses `Math.random`, wall clocks, or global RNG state. Exploration advances in fixed 100 ms ticks. The client sends commands through `transition`; `resolveTurn` advances one actor at a time. Illegal commands do not consume RNG.
 
 - Floors are 41 × 27 tiles of five to seven rooms with four to six patrols each. Floor 1's vault needs 19 pushes to seat three stones around pillars; floor 2 has five levers across the archive in a riddle order; floor 3 chains seven braziers (one five-touch solution); floor 4 sends you from the Warden's hall to a key in the far tower. `layout.test.ts` checks connectivity, patrol routes and every solution.
-- All 24 gear choices match the GDD. Base stats, skill costs/power, enemy stats and starting gold are initial balance values because the GDD leaves them open.
+- Five classes, matching the Paper Doll Studio: **Tank** (Shield Bash), **Healer** (Mend), and three damage dealers, **Archer** (Piercing Shot, mostly ignores DEF), **Mage** (Arcane Bolt; all its damage scales with MAG) and **Samurai** (Iai Slash). Each has 8 gear choices, two per slot (40 in all). The original Knight, Cleric and Rogue gear lives on as the Tank, Healer and Samurai sets; saves that name knights, clerics or rogues load as tanks, healers and samurai. Base stats, skill costs/power, enemy stats and starting gold are initial balance values because the GDD leaves them open.
+- The loadout (Armory) also changes your race, sex and class in the hub; changing class resets equipment to that class's starting gear.
 - Start with 120 gold. Adventurer hires cost 24–32 gold; community hires cost 0–2. A free tank, healer and two DPS remain available so repeated wipes cannot lock a player out of a balanced party. Fees are paid up front, dismissed hires are not refunded, and snapshots remain fixed for a run.
 - Wipes retain earned XP and banked gold, lose unbanked encounter gold, restore resources on the next run, and dismiss hires. The checkpoint starts at the hub; after unlocking sanctuary, it becomes floor 5.
 - Reaching sanctuary banks gold and ends the run. Hires are dismissed. Both directions of the hub/sanctuary portal remain available.
 - Party members sync to each floor's level. Damage and MP spent carry forward. Each cleared encounter restores 4 MP; descending grants one potion plus Holy Symbol bonuses, resets Smoke Bomb use, and increases synced resource maxima. Phoenix Feather use remains spent throughout the run.
 - Ordinary flee succeeds 50% of the time. An available living party member's Smoke Bomb guarantees one escape per floor. Escaped patrols pause 4.5 seconds; they grant no rewards.
 - Ghost context buckets include own HP, MP, lowest living ally HP, enemy count, boss presence and round. Player decisions are saved with pre-action context. `learn()` is tested but is deliberately not wired to update player ghosts in this MVP.
-- Automated expedition simulations cover all encounters with balanced parties led by each of the three classes. They establish clearability, **not a measured 20–30 minute human playtime**. Duration remains a playtest target; avoidance and familiarity can shorten a run considerably.
+- Automated expedition simulations cover all encounters with balanced parties led by each of the five classes. They establish clearability, **not a measured 20–30 minute human playtime**. Duration remains a playtest target; avoidance and familiarity can shorten a run considerably.
 
 ## Save format
 

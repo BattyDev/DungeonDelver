@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { transition } from './game';
+import { CLASS_IDS } from './classes';
 import { FLOORS, getFloor } from './content/floors';
 import { GHOSTS } from './content/ghosts';
 import { createFloor, canWalk, encounterAt, lineOfSight } from './floors/exploration';
@@ -13,7 +14,7 @@ import type { GameState } from './types';
 function game(): GameState {
   return transition(
     { phase: 'classSelect' },
-    { type: 'newGame', name: 'Test', classId: 'knight', seed: 42 },
+    { type: 'newGame', name: 'Test', classId: 'tank', seed: 42 },
   );
 }
 describe('progression and exploration', () => {
@@ -118,7 +119,7 @@ describe('progression and exploration', () => {
   });
   it('a balanced default party defeats the key guard across seeds', () => {
     for (const seed of [1, 42, 100, 888]) {
-      let p = newProgress('P', 'knight', seed);
+      let p = newProgress('P', 'tank', seed);
       p = { ...p, hires: [GHOSTS[1], GHOSTS[2], GHOSTS[4]] };
       const run = startRun(p);
       const party = run.party.map((f) => ({ ...f, hp: f.stats.hp, mp: f.stats.mp }));
@@ -154,14 +155,14 @@ it('every patrol segment stays on walkable floor geometry', () => {
       }
 });
 it('a broke player can always recruit a balanced community party', () => {
-  for (const classId of ['knight', 'cleric', 'rogue'] as const) {
+  for (const classId of CLASS_IDS) {
     let s = transition({ phase: 'classSelect' }, { type: 'newGame', name: 'P', classId, seed: 1 });
     if (s.phase !== 'hub') throw Error();
     s.progress.gold = 0;
     const ids =
-      classId === 'knight'
+      classId === 'tank'
         ? ['ghost-10', 'ghost-12', 'ghost-13']
-        : classId === 'cleric'
+        : classId === 'healer'
           ? ['ghost-8', 'ghost-12', 'ghost-13']
           : ['ghost-8', 'ghost-10', 'ghost-12'];
     for (const ghostId of ids) s = transition(s, { type: 'hire', ghostId });

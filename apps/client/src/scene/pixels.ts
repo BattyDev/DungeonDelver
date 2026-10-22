@@ -623,6 +623,35 @@ export function prop(id: PropId, themeId: ThemeId, frame = 0): Prop {
 }
 export const ANIMATED_PROPS: PropId[] = ['torch', 'candle', 'brazierLit'];
 
+/** 7 × 7 icons for named levers, painted at double size on the lever's plaque. */
+const GLYPHS: Record<string, string[]> = {
+  sun: ['#..#..#', '.#...#.', '..###..', '#.###.#', '..###..', '.#...#.', '#..#..#'],
+  moon: ['..###..', '.##....', '##.....', '##.....', '##.....', '.##....', '..###..'],
+  star: ['...#...', '...#...', '#######', '.#####.', '..###..', '.##.##.', '.#...#.'],
+  tide: ['.......', '.##..##', '#..##..', '.......', '.##..##', '#..##..', '.......'],
+  comet: ['....###', '...####', '..#####', '.#.###.', '#.#....', '.#.....', '#......'],
+};
+/** A lever with its symbol on the base plaque, thrown forward when `on`. */
+export function leverTexture(name: string, on: boolean, themeId: ThemeId) {
+  return texture(`lever-${name}-${on}-${themeId}`, () => {
+    const p = new Pix(28, 38);
+    p.rect(2, 20, 24, 17, '#2e2c3a');
+    p.rect(2, 20, 24, 1, '#8d8aa0');
+    p.rect(3, 21, 22, 15, '#3a3848');
+    const icon = GLYPHS[name.toLowerCase()];
+    const ink = on ? '#9ee7b3' : '#e8c547';
+    if (icon)
+      icon.forEach((row, y) =>
+        [...row].forEach((c, x) => {
+          if (c === '#') p.rect(7 + x * 2, 22 + y * 2, 2, 2, ink);
+        }),
+      );
+    p.line(14, 20, on ? 24 : 4, 5, '#a8662a');
+    p.ellipse(on ? 24 : 4, 5, 2.8, 2.8, on ? '#9ee7b3' : '#e2b15b');
+    p.outline();
+    return p.done();
+  });
+}
 /** Pixelates a smooth canvas (the enemy drawings) so it sits with the pixel art. */
 export function pixelate(source: HTMLCanvasElement, width: number): THREE.CanvasTexture {
   const key = `pixelate-${width}-${source.width}x${source.height}-${source.dataset.key ?? ''}`;

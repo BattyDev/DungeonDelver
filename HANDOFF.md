@@ -129,7 +129,7 @@ Rules have **no runtime dependencies, DOM or Three.js imports**. All game state 
 
 State flow: class select → hub → floors 1–4 ↔ combat → floor 5 safe room; hub/safe-room portals unlock at run completion. Reset returns to class select after confirmation. Gear and class changes are hub-only.
 
-Implemented MVP content: Knight, Cleric, Rogue; all 24 exact gear choices from the GDD; hiring/cards/party indicators; four hand-authored floors with pressure plates, lever order, lights-out braziers and boss/key hunt; locked stairs; visible patrols, wall-aware detection, sneaking and fleeing; autonomous companions; XP/gold; sanctuary portals; wipes; confirmed reset; saves and decision logs.
+Implemented MVP content: Knight, Cleric, Rogue *(since October 21: Tank, Healer, Archer, Mage and Samurai, at the owner's request, with 40 gear choices; see README)*; all 24 exact gear choices from the GDD; hiring/cards/party indicators; four hand-authored floors with pressure plates, lever order, lights-out braziers and boss/key hunt; locked stairs; visible patrols, wall-aware detection, sneaking and fleeing; autonomous companions; XP/gold; sanctuary portals; wipes; confirmed reset; saves and decision logs.
 
 Do not implement Supabase, auth, real-player lending/social features, procedural floors or floors beyond 5 as part of this MVP. `learn()` and player decision logging exist, but the player profile is not updated automatically in this slice.
 

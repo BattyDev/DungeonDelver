@@ -533,9 +533,9 @@ function buildIdentity() {
   ][]) {
     const game = GAME_CLASS_FOR[k];
     const b = chip(
-      game ? `${c.label} · ${CLASSES[game].name}` : c.label,
+      c.label,
       state.cls === k,
-      game ? `Used by the ${CLASSES[game].name} in the game` : 'Not playable in the game yet',
+      game ? `${CLASSES[game].name}: ${CLASSES[game].skill}` : 'Not playable in the game yet',
     );
     if (!game) b.classList.add('soon');
     b.addEventListener('click', () => switchClass(k));

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { pixelate } from './pixels';
+import { billboard } from './billboard';
+import type { Billboard } from './billboard';
 
 const cache = new Map<string, THREE.CanvasTexture>();
 type Pen = CanvasRenderingContext2D;
@@ -349,16 +351,12 @@ export function enemyTexture(type: string): THREE.CanvasTexture {
   });
 }
 /** Enemies are drawn smooth, then pixelated to sit with the pixel-art world and characters. */
-export function makeEnemySprite(type: string): THREE.Sprite {
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: pixelate(enemyTexture(type).image as HTMLCanvasElement, 44),
-      transparent: true,
-      alphaTest: 0.5,
-    }),
-  );
+export function makeEnemySprite(type: string): Billboard {
   // Stand on the contact shadow near the bottom of the drawing.
-  sprite.center.set(0.5, 12 / 220);
-  sprite.scale.set(1.25, 1.72, 1);
-  return sprite;
+  return billboard(
+    pixelate(enemyTexture(type).image as HTMLCanvasElement, 44),
+    1.25,
+    1.72,
+    12 / 220,
+  );
 }

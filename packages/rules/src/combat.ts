@@ -87,7 +87,7 @@ function valid(s: CombatState, a: Action): boolean {
   if (a.type === 'skill' && actor.mp < CLASSES[actor.classId].cost) return false;
   return (
     target.team ===
-    (a.type === 'skill' && actor.classId === 'cleric'
+    (a.type === 'skill' && actor.classId === 'healer'
       ? actor.team
       : actor.team === 'party'
         ? 'enemy'
@@ -130,13 +130,21 @@ export function resolveTurn(state: CombatState, action: Action): CombatState {
       say(`Phoenix Feather revives ${target.name}.`);
     }
   };
-  const damage = (source: Fighter, target: Fighter, power: number, allowCounter = true) => {
+  const damage = (
+    source: Fighter,
+    target: Fighter,
+    power: number,
+    allowCounter = true,
+    pierce = false,
+  ) => {
     if (target.hp <= 0) return;
     const crit = source.effects.includes('crit') && roll() < 0.15;
+    // Mages strike with MAG; piercing shots shrug off most armor.
+    const stat = CLASSES[source.classId].magic ? source.stats.mag : source.stats.atk;
     const amount = Math.max(
       1,
       Math.round(
-        (source.stats.atk * power - target.stats.def * 0.55) *
+        (stat * power - target.stats.def * (pierce ? 0.15 : 0.55)) *
           (crit ? 1.5 : 1) *
           (target.defending ? 0.5 : 1),
       ),
@@ -180,7 +188,7 @@ export function resolveTurn(state: CombatState, action: Action): CombatState {
     } else {
       actor.mp -= CLASSES[actor.classId].cost;
       say(`${actor.name} uses ${CLASSES[actor.classId].skill}.`);
-      if (actor.classId === 'cleric') {
+      if (actor.classId === 'healer') {
         const amount = (actor.stats.mag * 2 + 18) * (actor.effects.includes('mendBoost') ? 1.2 : 1);
         say(`${target.name} recovers ${heal(target, amount)} HP.`);
         if (actor.effects.includes('cleaveHeal')) {
@@ -190,13 +198,14 @@ export function resolveTurn(state: CombatState, action: Action): CombatState {
           if (other) say(`${other.name} recovers ${heal(other, amount / 2)} HP.`);
         }
       } else {
-        damage(actor, target, actor.classId === 'rogue' ? 1.8 : 1.25);
-        if (actor.classId === 'knight' && actor.effects.includes('taunt')) actor.tauntTurns = 2;
-        if (actor.classId === 'rogue' && actor.effects.includes('cleave')) {
+        const skill = CLASSES[actor.classId];
+        damage(actor, target, skill.power, true, skill.pierce);
+        if (actor.classId === 'tank' && actor.effects.includes('taunt')) actor.tauntTurns = 2;
+        if (actor.classId !== 'tank' && actor.effects.includes('cleave')) {
           const other = s.fighters.find(
             (f) => f.team !== actor.team && f.id !== target.id && f.hp > 0,
           );
-          if (other && actor.hp > 0) damage(actor, other, 1.8);
+          if (other && actor.hp > 0) damage(actor, other, skill.power, true, skill.pierce);
         }
       }
     }
