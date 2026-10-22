@@ -63,12 +63,20 @@ export function randomLook(cls: LookClass, rand: () => number = Math.random): Lo
 }
 /** Base body, hair and the class's starter gear, bottom to top. Gear the preset hides stays off. */
 export function lookLayers(look: Look): LayerSpec[] {
-  const layers: LayerSpec[] = [
-    { slot: 'base', style: 'body', color: '#000000', behind: [] },
-    { slot: 'hair', style: look.hair, color: look.hairColor, behind: [] },
-  ];
+  const layers: LayerSpec[] = [{ slot: 'base', style: 'body', color: '#000000', behind: [] }];
   for (const [slot, style, color, behind, hidden] of PRESETS[look.cls].gear)
     if (!hidden) layers.push({ slot, style, color, behind: behind ?? [] });
+  // Hair hangs over clothing, with headwear and held objects above it. Putting
+  // every hair pixel below the chest left only stray fragments of the ponytail.
+  const headwear = layers.findIndex((l) =>
+    ['helmet', 'weapon', 'offhand', 'back'].includes(l.slot),
+  );
+  layers.splice(headwear < 0 ? layers.length : headwear, 0, {
+    slot: 'hair',
+    style: look.hair,
+    color: look.hairColor,
+    behind: [],
+  });
   // A beard lies over the chest piece but under anything held.
   if (look.beard) {
     const held = layers.findIndex(
@@ -171,10 +179,11 @@ export class Doll implements FrameSource {
     this.units.add(id);
     const bk = bodyKey(this.look.race, this.look.sex),
       tmp = new Uint8ClampedArray(PX);
-    const order = [
-      ...this.layers.filter((l) => l.behind.includes(dir)),
-      ...this.layers.filter((l) => !l.behind.includes(dir)),
-    ];
+    // Walking layer overrides are whole-layer choices. In combat, articulated
+    // arms cross the torso: blockGear's per-pixel body depth resolves the held
+    // items, without hiding a staff/arrow behind its own raised hand as well.
+    const behind = (l: LayerSpec) => !ANIMS[anim].combat && l.behind.includes(dir);
+    const order = [...this.layers.filter(behind), ...this.layers.filter((l) => !behind(l))];
     for (let f = 0; f < ANIMS[anim].frames; f++) {
       const key = `${anim}|${dir}|${f}`;
       if (this.frames.has(key)) continue;

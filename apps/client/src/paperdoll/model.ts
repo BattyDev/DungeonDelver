@@ -413,9 +413,12 @@ export const RACES: Record<Race, RaceDef> = {
     ears: 'gnome',
   },
 };
-export const SEXES: Record<Sex, { label: string; shoulder: number; hip: number; bulk: number }> = {
-  F: { label: 'Female', shoulder: 0.92, hip: 1.08, bulk: 0.94 },
-  M: { label: 'Male', shoulder: 1.1, hip: 0.94, bulk: 1.0 },
+export const SEXES: Record<
+  Sex,
+  { label: string; shoulder: number; hip: number; bulk: number; waist: number; arm: number }
+> = {
+  F: { label: 'Female', shoulder: 0.8, hip: 1.22, bulk: 0.94, waist: 0.72, arm: 0.9 },
+  M: { label: 'Male', shoulder: 1.1, hip: 0.94, bulk: 1.0, waist: 0.92, arm: 1 },
 };
 export const PALETTE = [
   '#1b1a24',
@@ -458,12 +461,19 @@ export const splitBody = (key: string): { race: Race; sex: Sex } => ({
   race: key.slice(0, -1) as Race,
   sex: key.slice(-1) as Sex,
 });
-export type BodyDef = RaceDef & { shoulder: number; hip: number };
+export type BodyDef = RaceDef & { shoulder: number; hip: number; waist: number; arm: number };
 export function bodyDef(key: string): BodyDef {
   const { race, sex } = splitBody(key);
   const r = RACES[race],
     s = SEXES[sex];
-  return { ...r, bulk: r.bulk * s.bulk, shoulder: s.shoulder, hip: s.hip };
+  return {
+    ...r,
+    bulk: r.bulk * s.bulk,
+    shoulder: s.shoulder,
+    hip: s.hip,
+    waist: s.waist,
+    arm: s.arm,
+  };
 }
 export const hexRgb = (h: string): [number, number, number] => [
   parseInt(h.slice(1, 3), 16),

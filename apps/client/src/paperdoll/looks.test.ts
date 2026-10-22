@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { RACE_IDS, SEX_IDS } from '@delver/rules';
-import { F, LOOK_CLASS_IDS } from './model';
+import { F, LOOK_CLASS_IDS, RACES } from './model';
 import { Doll, defaultLook, randomLook } from './looks';
 import { blockGear, skeleton } from './pose';
 
@@ -91,4 +91,58 @@ it('keeps the drawn bowstring behind the bow arm', () => {
           }
       }
   expect(checked).toBeGreaterThan(50);
+});
+
+it('keeps the north-facing ponytail filled and visible over the tank armour throughout the walk', () => {
+  const doll = new Doll(defaultLook('orc', 'F', 'tank'));
+  for (let f = 0; f < 6; f++) {
+    const sk = skeleton('walk', f, 4, 'orcF'),
+      h = sk.headLocal;
+    const p = sk.toScreen({
+      x: h.x + 2.5 * sk.k * 0.75,
+      y: h.y - sk.HR * 0.2 + (13 * sk.k + sk.HR * 0.2) * 0.75,
+      z: h.z - sk.HR * (0.85 + 0.45 * 0.75),
+    });
+    const frame = doll.frameNow('walk', 4, f),
+      i = (Math.floor(p.y) * F + Math.floor(p.x)) * 4;
+    expect([...frame.slice(i, i + 4)], `north ponytail frame ${f}`).toEqual([42, 39, 48, 255]);
+  }
+});
+
+it('covers the ear roots with the helmet on both front diagonals', () => {
+  const buf = new Uint8ClampedArray(F * F * 4);
+  for (const race of ['orc', 'elf', 'gnome'] as const)
+    for (const sex of SEX_IDS)
+      for (const dir of [1, 7])
+        for (let f = 0; f < 6; f++) {
+          const sk = skeleton('walk', f, dir, `${race}${sex}`),
+            h = sk.headLocal;
+          // The near ear attaches on the back/side of the head, under its shell.
+          const side = dir === 1 ? -1 : 1;
+          const p = sk.toScreen({ x: h.x + side * sk.HR * 0.85, y: h.y + 0.3, z: h.z - 0.5 });
+          blockGear(buf, 'walk', f, dir, `${race}${sex}`, 'helmet', '#7b8798', 'helm');
+          const i = (Math.floor(p.y) * F + Math.floor(p.x)) * 4;
+          expect(buf[i + 3], `${RACES[race].label}${sex} ${dir}/${f} ear root`).toBe(255);
+        }
+});
+
+it('keeps the healer staff flare visible at the overhead peak for every body', () => {
+  for (const race of RACE_IDS)
+    for (const sex of SEX_IDS) {
+      const doll = new Doll(defaultLook(race, sex, 'healer'));
+      for (const [anim, f] of [
+        ['heal', 2],
+        ['channel', 0],
+        ['channel', 1],
+        ['channel', 2],
+        ['channel', 3],
+      ] as const) {
+        const frame = doll.frameNow(anim, 6, f);
+        let flare = 0;
+        for (let i = 0; i < frame.length; i += 4)
+          if (frame[i] === 236 && frame[i + 1] === 255 && frame[i + 2] === 240 && frame[i + 3])
+            flare++;
+        expect(flare, `${race}${sex} ${anim}/${f} overhead staff flare`).toBeGreaterThan(0);
+      }
+    }
 });

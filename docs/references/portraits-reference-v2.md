@@ -1,0 +1,14 @@
+# Portrait reference and editable defaults
+
+Generated with the built-in image generation tool on October 22, 2026, in response to the owner's request to generate a reference before recreating the portraits in the editor.
+
+- Generated reference: `portraits-reference-v2.webp` (lossless copy; the original PNG remains in the local workspace). Both reference sheets have identical decoded pixels; their PNG metadata differs.
+- Game asset: `apps/client/public/portraits/defaults-v2.png` (320 × 128, ten 64 × 64 faces).
+- Enlarged pixel preview: `docs/previews/portrait-reference-pixels.png`.
+- Preparation: `tools/portraits/slice_defaults.py` separates the ten busts, removes the connected backdrop, reduces each to 64 × 64, quantizes to 48 colours without dithering, and adds a one-pixel outline. Transparent pixels are normalized and alpha is binary. This is a reduction of the generated reference, not a claim of a hand-painted reproduction.
+- The Portrait Studio loads each face into its editable pixel buffer. Pencil, eraser, fill, picker, undo, frame duplication and exports work on those actual pixels. Existing painted drafts remain intact; **Default face** replaces only the selected frame and can be undone.
+- Back hair on the procedural fallback also draws behind the neck and shoulders.
+
+## Exact generation prompt
+
+Create a polished reference sheet for a fantasy RPG's editable pixel-art character portraits. One image, a precisely aligned grid of 5 columns and 2 rows. Columns: human, orc, elf, dwarf, gnome. Top row adult women, bottom row adult men. Each tile is a beautifully handcrafted 64x64 pixel-art head-and-shoulders portrait, displayed at large integer scale with crisp square pixels, no smoothing. Consistent frontal slightly three-quarter pose, head scale and warm upper-left lighting. Rich but controlled 16-bit RPG pixel-art clusters, modeled cheekbones, expressive eyes, detailed noses and lips, natural distinctive silhouettes, attractive adult characters, not emojis or flat geometric icons. Women have clearly feminine faces with softer jawlines, shaped eyebrows and tasteful varied hairstyles; male counterparts visibly different. Orcs green with small lower tusks and strong brows, elves long pointed ears, dwarves broad faces with female braided side hair and male short beard, gnomes warm round faces and lively eyes. IMPORTANT anatomy: chin connects to a visibly exposed skin-colored neck down to an open tunic collar; long hair falls ONLY beside the face and behind the shoulders, never a dark wall across the neck. Shoulders and collar separated from hair. Female dwarf has no beard. No helmets, weapons, jewelry obscuring anatomy, text, labels or borders. Muted dark teal background in every tile, warm fantasy jewel-tone clothing. Make this an excellent cohesive professional game portrait reference, with enough distinct pixel structure to recreate each tile in a pixel editor.

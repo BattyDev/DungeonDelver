@@ -64,6 +64,8 @@ interface Actor {
   delay?: { anim: AnimId; at: number; hold: boolean };
   lunge: number;
   dead: boolean;
+  hp: number;
+  health?: { from: number; to: number; at: number };
 }
 interface Float {
   x: number;
@@ -80,6 +82,11 @@ export class CombatStage {
   private floats: Float[] = [];
   private status = new Map<string, Fighter>();
   private time = 0;
+  private finishAt = Infinity;
+  /** The final impact, death frames, and a short held pose have been shown. */
+  get readyToLeave() {
+    return this.time >= this.finishAt;
+  }
   private backdrop: HTMLCanvasElement;
   private sprite = document.createElement('canvas');
   selected = '';
@@ -118,7 +125,9 @@ export class CombatStage {
       const type = Object.keys(ENEMIES).find((t) => ENEMIES[t].name === f.name) ?? 'cultist';
       this.add(f, ENEMY_SPOTS[i % 4], { doll: creatureFor(type), creature: type, scale: 1 });
     });
-    this.activeId = activeFighter(combat).id;
+    this.activeId = combat.outcome === 'active' ? activeFighter(combat).id : '';
+    if (combat.outcome !== 'active') this.finishAt = 0.5;
+    this.setFighters(combat.fighters);
     this.canvas.addEventListener('pointerup', (e) => this.click(e));
   }
   private add(f: Fighter, [x, y]: [number, number], extra: Partial<Actor>) {
@@ -135,6 +144,7 @@ export class CombatStage {
       hold: dead,
       lunge: 0,
       dead,
+      hp: f.hp,
       ...extra,
     });
     const actor = this.actors.get(f.id)!;
@@ -177,6 +187,12 @@ export class CombatStage {
   update(prev: CombatState, next: CombatState) {
     const actorId = activeFighter(prev).id;
     this.activeId = next.outcome === 'active' ? activeFighter(next).id : '';
+    if (next.outcome !== 'active') {
+      this.selected = '';
+      this.finishAt =
+        this.time +
+        (next.outcome === 'fled' ? 0.5 : HIT_DELAY + ANIMS.death.frames / ANIMS.death.fps + 0.5);
+    }
     const before = new Map(prev.fighters.map((f) => [f.id, f]));
     const actorBefore = before.get(actorId),
       actorAfter = next.fighters.find((f) => f.id === actorId);
@@ -187,6 +203,7 @@ export class CombatStage {
         a = this.actors.get(f.id);
       if (!p || !a) continue;
       const d = f.hp - p.hp;
+      if (d) a.health = { from: a.hp, to: f.hp, at: this.time + HIT_DELAY };
       if (d < 0) {
         if (actorBefore && f.team !== actorBefore.team) hitFoes = true;
         this.float(a, `-${-d}`, '#ff8a80');
@@ -231,6 +248,11 @@ export class CombatStage {
     ctx.drawImage(this.backdrop, 0, 0);
     const list = [...this.actors.values()].sort((a, b) => a.y - b.y);
     for (const a of list) {
+      if (a.health && this.time >= a.health.at) {
+        const t = Math.min(1, (this.time - a.health.at) / 0.22);
+        a.hp = a.health.from + (a.health.to - a.health.from) * t;
+        if (t === 1) a.health = undefined;
+      }
       if (a.delay && this.time >= a.delay.at) {
         a.dead = a.delay.hold;
         this.play(a, a.delay.anim, a.delay.hold);
@@ -281,7 +303,7 @@ export class CombatStage {
     // Combat art is drawn facing the combat camera (east), toward the enemy line.
     const dir = a.enemy ? 2 : COMBAT_DIR;
     const frame =
-      a.doll!.frame(a.anim, dir, f) ??
+      (a.hold ? a.doll!.frameNow(a.anim, dir, f) : a.doll!.frame(a.anim, dir, f)) ??
       a.doll!.frame('idle', dir, 0) ??
       a.doll!.frameNow('idle', dir, 0);
     this.sprite.getContext('2d')!.putImageData(new ImageData(frame.slice(), F, F), 0, 0);
@@ -289,7 +311,7 @@ export class CombatStage {
   }
   private drawBars(a: Actor) {
     const f = this.status.get(a.id);
-    if (!f || f.hp <= 0) return;
+    if (!f) return;
     const ctx = this.ctx,
       w = 26,
       x = Math.round(a.x - w / 2),
@@ -297,7 +319,15 @@ export class CombatStage {
     ctx.fillStyle = '#0b1416';
     ctx.fillRect(x - 1, y - 1, w + 2, f.stats.mp ? 6 : 4);
     ctx.fillStyle = a.enemy ? '#d9706a' : '#8fd6a8';
-    ctx.fillRect(x, y, Math.round((w * f.hp) / f.stats.hp), 2);
+    ctx.fillRect(x, y, Math.round((w * a.hp) / f.stats.hp), 2);
+    if (a.hp <= 0) {
+      ctx.font = 'bold 6px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#0b1416';
+      ctx.fillText('0 HP', a.x + 1, y - 2);
+      ctx.fillStyle = '#f3f1f7';
+      ctx.fillText('0 HP', a.x, y - 3);
+    }
     if (f.stats.mp) {
       ctx.fillStyle = '#8ea6e6';
       ctx.fillRect(x, y + 3, Math.round((w * f.mp) / f.stats.mp), 1);
