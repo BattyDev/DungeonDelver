@@ -1,0 +1,258 @@
+@import './studio.css';
+.wardrobe-pages {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.wardrobe-pages a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.wardrobe-pages a[aria-current='page'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.portrait-studio .studio-top {
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+}
+.portrait-identity {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.portrait-identity label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--accent);
+  font-size: 12px;
+}
+.portrait-identity p {
+  flex: 1;
+  margin: 0;
+  min-width: 200px;
+}
+.portrait-workspace {
+  grid-template-columns: 200px minmax(320px, 1fr) 300px;
+}
+.portrait-tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.portrait-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+.portrait-control select {
+  margin-left: auto;
+}
+.portrait-colour {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  margin: 6px 0;
+}
+.portrait-colour input {
+  width: 48px;
+  height: 34px;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.portrait-board-wrap {
+  display: flex;
+  justify-content: center;
+  background: var(--panel-2);
+  padding: 16px;
+}
+#portraitBoard {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  aspect-ratio: 1;
+  height: auto;
+  image-rendering: pixelated;
+  touch-action: none;
+  cursor: crosshair;
+  background: repeating-conic-gradient(var(--check-a) 0 25%, var(--check-b) 0 50%) 0/16px 16px;
+}
+.portrait-frame-heading {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin: 14px 0 8px;
+}
+.portrait-frames {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 3px 2px 9px;
+}
+.portrait-frames button {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  padding: 3px;
+  background: var(--panel-2);
+}
+.portrait-frames canvas {
+  width: 56px;
+  height: 56px;
+  display: block;
+  image-rendering: pixelated;
+}
+.portrait-frames span {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  font: 10px var(--mono);
+  color: var(--muted);
+}
+.portrait-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.portrait-sidebar {
+  display: grid;
+  gap: 14px;
+}
+.portrait-preview-panel {
+  text-align: center;
+}
+.portrait-preview-panel h2 {
+  text-align: left;
+}
+#portraitPreview {
+  width: 192px;
+  height: 192px;
+  max-width: 100%;
+  image-rendering: pixelated;
+  background: radial-gradient(ellipse at 50% 35%, #33494a, #0c171b);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 10px auto;
+}
+#previewStatus {
+  color: var(--accent);
+  font-size: 12px;
+  min-height: 18px;
+}
+.portrait-timing {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  text-align: left;
+}
+.portrait-timing label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.portrait-timing input {
+  width: 60px;
+  background: #0c171b;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px;
+}
+.portrait-files {
+  display: grid;
+  gap: 8px;
+}
+.portrait-file-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff06;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.portrait-file-button:focus-within {
+  outline: 2px solid var(--accent);
+}
+.portrait-file-button input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.portrait-message {
+  min-height: 20px;
+  color: var(--green);
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding: 8px 0;
+  margin: 8px 0 0;
+}
+@media (max-width: 1100px) {
+  .portrait-workspace {
+    grid-template-columns: 170px minmax(280px, 1fr) 250px;
+  }
+  .portrait-studio .studio-top {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .portrait-identity {
+    gap: 12px;
+  }
+}
+@media (max-width: 850px) {
+  .portrait-workspace {
+    grid-template-columns: 150px minmax(240px, 1fr);
+  }
+  .portrait-sidebar {
+    grid-column: 1/-1;
+    grid-template-columns: 1fr 1fr;
+  }
+  .portrait-frame-heading {
+    flex-wrap: wrap;
+  }
+  .portrait-identity label {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 520px) {
+  .portrait-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .portrait-workspace > * {
+    width: 100%;
+  }
+  .portrait-workspace .tools {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .portrait-workspace .tools h2 {
+    width: 100%;
+  }
+  .portrait-sidebar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .portrait-workspace .palette {
+    width: 100%;
+  }
+  .portrait-board-wrap {
+    padding: 8px;
+  }
+}

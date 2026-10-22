@@ -8,6 +8,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         studio: fileURLToPath(new URL('./studio.html', import.meta.url)),
+        portraits: fileURLToPath(new URL('./portraits.html', import.meta.url)),
       },
       output: { manualChunks: { three: ['three'] } },
     },

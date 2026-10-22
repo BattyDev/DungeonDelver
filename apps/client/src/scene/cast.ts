@@ -2,8 +2,9 @@
 // a hired companion keeps their face for the whole visit.
 import { CLASSES } from '@delver/rules';
 import type { ClassId, Ghost } from '@delver/rules';
-import { GAME_CLASS_LOOK, LOOK_CLASS_IDS } from '../paperdoll/model';
-import { randomLook } from '../paperdoll/looks';
+import { GAME_CLASS_LOOK, LOOK_CLASS_IDS, splitBody } from '../paperdoll/model';
+import { defaultLook, randomLook } from '../paperdoll/looks';
+import { readPortraits } from '../paperdoll/portraits';
 import type { Look } from '../paperdoll/looks';
 
 const KEY = 'dungeon-delver.hall-looks';
@@ -20,7 +21,12 @@ function looks(): Record<string, Look> {
 function remember(id: string, make: () => Look): Look {
   const all = looks();
   if (!all[id]) {
-    all[id] = make();
+    const look=make();
+    // A painted character keeps that portrait's race/sex on future visits,
+    // instead of rerolling into a different body and losing their painted face.
+    const painted=Object.entries(readPortraits()).filter(([key])=>key.startsWith(`person:${id}|`))
+      .sort(([,a],[,b])=>b.updated-a.updated)[0]?.[1];
+    all[id] = painted ? {...look,...defaultLook(splitBody(painted.body).race,splitBody(painted.body).sex,look.cls)} : look;
     try {
       sessionStorage.setItem(KEY, JSON.stringify(all));
     } catch {

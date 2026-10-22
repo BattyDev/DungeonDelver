@@ -28,6 +28,7 @@ interface Pose {
   sL: number;
 }
 export type Part =
+  | 'neck'
   | 'torso'
   | 'hips'
   | 'shoulders'
@@ -115,7 +116,7 @@ const POSES: Record<AnimId, Partial<Pose>[]> = {
   heal: [
     { aR: [40, 40], aL: [30, 40] },
     { lean: -3, breath: 1, aR: [130, 30], aL: [70, 30] },
-    { lean: -6, breath: 2, aR: [165, 10], aL: [95, 10] },
+    { lean: -6, breath: 2, aR: [145, 10], aL: [95, 10] },
     { lean: -2, breath: 1, aR: [80, 40], aL: [40, 40] },
   ],
   shoot: [
@@ -140,10 +141,10 @@ const POSES: Record<AnimId, Partial<Pose>[]> = {
     { aR: [30, 30], aL: [30, 30] },
   ],
   channel: [
-    { lean: -2, aR: [170, 10], aL: [100, 40] },
-    { lean: -2, breath: 1, aR: [172, 8], aL: [104, 36] },
-    { lean: -3, breath: 2, aR: [175, 6], aL: [108, 32] },
-    { lean: -2, breath: 1, aR: [172, 8], aL: [104, 36] },
+    { lean: -2, aR: [150, 10], aL: [100, 40] },
+    { lean: -2, breath: 1, aR: [152, 8], aL: [104, 36] },
+    { lean: -3, breath: 2, aR: [155, 6], aL: [108, 32] },
+    { lean: -2, breath: 1, aR: [152, 8], aL: [104, 36] },
   ],
   slash: [
     { aR: [60, 50], aL: [55, 55], lL: [14, 10], lR: [-14, 10], sA: 3 },
@@ -201,6 +202,7 @@ export function skeleton(anim: AnimId, frame: number, dir: number, bkey: string)
     NECK + HR * 0.55,
   );
   add(hip, neck, 'torso');
+  add(neck, head, 'neck');
   const hipS = { R: v(hw, 0, 0), L: v(-hw, 0, 0) };
   const shS = {
     R: v(sw, neck.y + 2.5 * k, neck.z * 0.95),
@@ -293,19 +295,26 @@ interface CircleShape {
   r: number;
   rx?: number;
   ry?: number;
+  angle?: number;
   color: RGB;
   clip?: (x: number, y: number) => boolean;
   head?: boolean;
   d?: number;
+  /** Depth of the visible surface of a round head/shell, rather than its centre plane. */
+  roundDepth?: boolean;
 }
 interface CapsuleShape {
   a: Pt;
   b: Pt;
-  r: number;
+  r: number | ((t: number) => number);
+  /** Conservative bound when r varies along a capsule. */
+  maxR?: number;
   t0?: number;
   t1?: number;
   color: ShapeColor;
   d?: number;
+  /** Interpolate projected endpoints; d remains an optional offset from that depth. */
+  depthEnds?: [number, number];
 }
 export type Shape = CircleShape | CapsuleShape;
 const isCircle = (s: Shape): s is CircleShape => 'circle' in s;
@@ -317,7 +326,8 @@ interface DepthMap {
 }
 /** Parts this much nearer than what they overlap get an outline, so a near arm reads against the torso. */
 const INNER_EDGE = 2.5;
-// Rasterizes capsules, ellipses and dots into a buffer with a 1px outline. Shapes later in the list draw on top.
+// Rasterizes rounded capsules, ellipses and dots with one-pixel outlines.
+// Explicit depths resolve crossings per pixel; equal depths retain drawing order.
 export function raster(
   buf: Uint8ClampedArray,
   shapes: Shape[],
@@ -335,6 +345,24 @@ export function raster(
     col: (RGB | undefined)[] = new Array(F * F),
     headMask = new Uint8Array(F * F),
     depth = new Float32Array(F * F).fill(-Infinity);
+  const bounded = shapes.map((s) => {
+    if (isCircle(s)) {
+      const a = s.angle ?? 0,
+        rx = s.r * (s.rx || 1),
+        ry = s.r * (s.ry || 1);
+      const w = Math.hypot(rx * Math.cos(a), ry * Math.sin(a)),
+        h = Math.hypot(rx * Math.sin(a), ry * Math.cos(a));
+      return { s, x0: s.circle.x - w, x1: s.circle.x + w, y0: s.circle.y - h, y1: s.circle.y + h };
+    }
+    const r = typeof s.r === 'number' ? s.r : (s.maxR ?? F);
+    return {
+      s,
+      x0: Math.min(s.a.x, s.b.x) - r,
+      x1: Math.max(s.a.x, s.b.x) + r,
+      y0: Math.min(s.a.y, s.b.y) - r,
+      y1: Math.max(s.a.y, s.b.y) + r,
+    };
+  });
   for (let y = 0; y < F; y++)
     for (let x = 0; x < F; x++) {
       const px = x + 0.5,
@@ -342,14 +370,22 @@ export function raster(
       let c: RGB | null = null,
         isHead = false,
         d = 0;
-      for (const s of shapes) {
+      for (const item of bounded) {
+        if (px < item.x0 || px > item.x1 || py < item.y0 || py > item.y1) continue;
+        const s = item.s;
         if (isCircle(s)) {
-          const ex = (px - s.circle.x) / (s.rx || 1),
-            ey = (py - s.circle.y) / (s.ry || 1);
+          const ca = Math.cos(s.angle ?? 0),
+            sa = Math.sin(s.angle ?? 0);
+          const dx = px - s.circle.x,
+            dy = py - s.circle.y;
+          const ex = (dx * ca + dy * sa) / (s.rx || 1),
+            ey = (-dx * sa + dy * ca) / (s.ry || 1);
           if (ex * ex + ey * ey <= s.r * s.r && (!s.clip || s.clip(px, py))) {
+            const sd = (s.d ?? 0) + (s.roundDepth ? Math.sqrt(s.r * s.r - ex * ex - ey * ey) : 0);
+            if (c && sd < d) continue;
             c = s.color;
             isHead = !!s.head;
-            d = s.d ?? 0;
+            d = sd;
           }
           continue;
         }
@@ -359,14 +395,20 @@ export function raster(
         let t = len2 ? ((px - s.a.x) * vx + (py - s.a.y) * vy) / len2 : 0;
         const t0 = s.t0 || 0,
           t1 = s.t1 == null ? 1 : s.t1;
-        if (len2 && (t < t0 - 0.02 || t > t1 + 0.02)) continue;
+        // Full limbs have round joints. Partial clothing sections keep a straight cuff/hem.
+        if (len2 && ((t0 > 0 && t < t0) || (t1 < 1 && t > t1))) continue;
         t = Math.max(t0, Math.min(t1, t));
         const ddx = px - (s.a.x + vx * t),
           ddy = py - (s.a.y + vy * t);
-        if (ddx * ddx + ddy * ddy <= s.r * s.r) {
+        const r = typeof s.r === 'function' ? s.r(t) : s.r;
+        if (ddx * ddx + ddy * ddy <= r * r) {
+          const sd = s.depthEnds
+            ? s.depthEnds[0] + (s.depthEnds[1] - s.depthEnds[0]) * t + (s.d ?? 0)
+            : (s.d ?? 0);
+          if (c && sd < d) continue;
           c = typeof s.color === 'function' ? s.color(t, py) : s.color;
           isHead = false;
-          d = s.d ?? 0;
+          d = sd;
         }
       }
       if (c) {
@@ -432,6 +474,7 @@ export function raster(
 }
 
 const R: Record<Part, number> = {
+  neck: 1.8,
   torso: 4.6,
   hips: 4.4,
   shoulders: 3.6,
@@ -442,6 +485,18 @@ const R: Record<Part, number> = {
   foot: 1.6,
   ear: 1.0,
 };
+// A fitted waist shared by skin, leather, plate and robes. Hip/shoulder joints
+// provide the width at either end; armour follows the same body underneath.
+function partRadius(sk: Skeleton, part: Part, t: number) {
+  const bulk = sk.b.bulk * sk.b.scale;
+  const arm = ['shoulders', 'upperArm', 'forearm'].includes(part) ? sk.b.arm : 1;
+  let r = R[part] * bulk * arm;
+  if (part === 'torso') {
+    const waist = Math.max(0, 1 - Math.abs(t - 0.48) / 0.32);
+    r = (r + Math.abs(sk.facing.fx) * 0.8 * bulk) * (1 - waist * (1 - sk.b.waist));
+  }
+  return r;
+}
 // Bald base body in plain underclothes, with eyes (and tusks for orcs) so facing reads at a glance.
 function blockBody(buf: Uint8ClampedArray, sk: Skeleton, out?: DepthMap) {
   const b = sk.b,
@@ -449,10 +504,9 @@ function blockBody(buf: Uint8ClampedArray, sk: Skeleton, out?: DepthMap) {
     skin = hexRgb(b.skin[1]),
     skinD = hexRgb(b.skin[0]),
     cloth = hexRgb('#4a4a55');
-  const sideness = Math.abs(sk.facing.fx);
   const parts: Shape[] = sk.segs.map((sg) => {
-    let r = R[sg.part] * (sg.part === 'ear' ? Math.max(1, b.scale) : bulk);
-    if (sg.part === 'torso') r += sideness * 0.8 * bulk;
+    const r =
+      sg.part === 'ear' ? R.ear * Math.max(1, b.scale) : (t: number) => partRadius(sk, sg.part, t);
     const far = sg.d < -1.2 && sg.part !== 'torso';
     let color: ShapeColor = far ? skinD : skin;
     if (sg.part === 'torso') color = (t) => (t < 0.28 || t > 0.5 ? cloth : skin);
@@ -460,7 +514,15 @@ function blockBody(buf: Uint8ClampedArray, sk: Skeleton, out?: DepthMap) {
     if (sg.part === 'shoulders')
       color = (_t, py) => (py > sk.head.y + sk.head.r + 3 ? cloth : skin);
     if (sg.part === 'thigh') color = (t) => (t < 0.42 ? cloth : far ? skinD : skin);
-    return { a: sg.a, b: sg.b, r, color, d: sg.d + (sg.part === 'ear' ? 0.01 : 0) };
+    return {
+      a: sg.a,
+      b: sg.b,
+      r,
+      maxR: partRadius(sk, sg.part, 1),
+      color,
+      depthEnds: [sg.a.d, sg.b.d],
+      d: sg.part === 'ear' ? 0.01 : 0,
+    };
   });
   parts.push({
     circle: sk.head,
@@ -468,6 +530,7 @@ function blockBody(buf: Uint8ClampedArray, sk: Skeleton, out?: DepthMap) {
     color: skin,
     head: true,
     d: sk.head.d + 0.001,
+    roundDepth: true,
   });
   // Ears go behind the head when they face away.
   parts.sort((p1, p2) => (p1.d ?? 0) - (p2.d ?? 0));
@@ -532,22 +595,36 @@ export function blockGear(
   const seg = (part: Part, side?: 'L' | 'R') =>
     sk.segs.find((s) => s.part === part && (!side || s.side === side));
   const shapes: Shape[] = [];
-  const sideness = Math.abs(sk.facing.fx);
   const cap = (sg: Seg | undefined, pad: number, t0 = 0, t1 = 1, color?: RGB, dOff = 0) =>
     sg &&
     shapes.push({
       a: sg.a,
       b: sg.b,
-      r: R[sg.part] * bulk + pad + (sg.part === 'torso' ? sideness * 0.8 * bulk : 0),
+      r: (t) => partRadius(sk, sg.part, t) + pad,
+      maxR: partRadius(sk, sg.part, 1) + pad,
       t0,
       t1,
       color: color || (sg.d < -1.2 && sg.part !== 'torso' ? shade : base),
-      d: sg.d + dOff,
+      depthEnds: [sg.a.d, sg.b.d],
+      d: dOff + 0.15,
     });
   const hd = sk.head,
     H = sk.headLocal,
     HR = sk.HR,
     headR = hd.r * Math.sqrt(Math.min(1.2, bulk)) * 0.95;
+  // Headwear and hair openings share the body's screen rotation when falling.
+  const downPoint = sk.toScreen({ x: H.x, y: H.y + 1, z: H.z });
+  const down = { x: downPoint.x - hd.x, y: downPoint.y - hd.y };
+  const right = { x: down.y, y: -down.x };
+  const headAngle = Math.atan2(down.y, down.x) - Math.PI / 2;
+  const headPoint = (x: number, y: number): Pt => ({
+    x: hd.x + right.x * x + down.x * y,
+    y: hd.y + right.y * x + down.y * y,
+  });
+  const headOffset = (x: number, y: number): Pt => ({
+    x: (x - hd.x) * right.x + (y - hd.y) * right.y,
+    y: (x - hd.x) * down.x + (y - hd.y) * down.y,
+  });
   const along = (sg: Seg, t: number): Pt => ({
     x: sg.a.x + (sg.b.x - sg.a.x) * t,
     y: sg.a.y + (sg.b.y - sg.a.y) * t,
@@ -621,20 +698,19 @@ export function blockGear(
           b: fa.b,
           r: 2.2 * bulk,
           color: fa.d < -1.2 ? shade : base,
-          d: fa.d + 0.1,
+          d: fa.b.d + 0.2,
         });
     }
   } else if (slot === 'helmet') {
     if (style === 'hood') {
       const faceClip = (x: number, y: number) => {
-        const ox = x - hd.x,
-          oy = y - hd.y;
+        const { x: ox, y: oy } = headOffset(x, y);
         // A wide opening: the whole face shows below the brow.
         if (facingAway) return true;
         if (facingUs) return !(oy > -headR * 0.5 && Math.abs(ox) < headR * 0.82);
         return !(oy > -headR * 0.5 && ox * sk.facing.fx > -headR * 0.3);
       };
-      const drape = { x: hd.x + back.x * headR * 0.3, y: hd.y + headR * 1.4 };
+      const drape = headPoint(back.x * headR * 0.3, headR * 1.4);
       for (let i = 0; i <= 4; i++) {
         const t = i / 4;
         shapes.push({
@@ -646,49 +722,82 @@ export function blockGear(
           clip: faceClip,
         });
       }
-      shapes.push({ circle: hd, r: headR + 1.4, color: base, clip: faceClip, d: hd.d + 1 });
+      shapes.push({
+        circle: hd,
+        r: headR + 1.4,
+        color: base,
+        clip: faceClip,
+        d: hd.d + 0.3,
+        roundDepth: true,
+      });
     } else if (style === 'wizard') {
       // The brim sits on the brow, above the eyes; the cone never dips below it.
-      const brim = { x: hd.x, y: hd.y - headR * 0.62 };
-      shapes.push({ circle: brim, r: headR * 1.55, ry: 0.24, color: shade, d: hd.d + 1 });
+      const brim = headPoint(0, -headR * 0.62);
+      shapes.push({
+        circle: brim,
+        r: headR * 1.55,
+        ry: 0.24,
+        angle: headAngle,
+        color: shade,
+        d: hd.d + headR + 1,
+      });
       // A low crown bends back at its tip. Its height fits the available headroom,
       // including the outline, instead of flattening a clamped straight cone.
-      const height = Math.min(headR * 1.85, Math.max(1.5, brim.y - 3));
+      const room = Math.min(
+        ...(['x', 'y'] as const).map((axis) => {
+          const up = -down[axis];
+          return Math.abs(up) < 0.001 ? Infinity : ((up > 0 ? F - 1 : 1) - brim[axis]) / up;
+        }),
+      );
+      const height = Math.min(headR * 1.85, Math.max(1.5, room - 2));
       const bend = Math.abs(back.x) > 0.2 ? back.x : -0.65;
       for (let i = 0; i <= 12; i++) {
         const t = i / 12,
-          c = {
-            x: brim.x + bend * headR * 1.3 * t * t,
-            y: brim.y - height * Math.sin(t * Math.PI * 0.58),
-          };
+          c = headPoint(
+            bend * headR * 1.3 * t * t,
+            -headR * 0.62 - height * Math.sin(t * Math.PI * 0.58),
+          );
         shapes.push({
           circle: c,
           r: headR * (0.88 - t * 0.8) + 0.3,
           ry: Math.min(1, height / (headR * 1.85)),
+          angle: headAngle,
           color: base,
-          d: hd.d + 1.1,
-          clip: (_x, y) => y < brim.y + 0.5,
+          d: hd.d + headR + 1.1,
+          clip: (x, y) => headOffset(x, y).y < -headR * 0.62 + 0.5,
         });
       }
     } else {
       // Helms cover the crown and the cheeks, and leave the face open.
-      const browY = hd.y - headR * 0.5;
+      const browY = -headR * 0.5;
       const helmClip = (x: number, y: number) => {
         if (eyeOpening(x, y)) return false;
-        const ox = x - hd.x,
-          oy = y - hd.y;
-        if (y < browY) return true;
-        if (oy > headR * 0.45 || facingAway) return facingAway && oy < headR * 0.15;
-        if (facingUs) return Math.abs(ox) > headR * 0.62;
+        const { x: ox, y: oy } = headOffset(x, y);
+        if (oy < browY) return true;
+        if (oy > headR * 0.65 || facingAway) return facingAway && oy < headR * 0.15;
+        // Turn the opening with the face. A centred front-view opening on a
+        // diagonal exposed the rear ear through the helmet's cheek plate.
+        if (facingUs)
+          return (
+            Math.abs(ox - sk.facing.fx * headR * 0.35) >
+            headR * (0.62 - Math.abs(sk.facing.fx) * 0.14)
+          );
         return ox * sk.facing.fx < -headR * 0.1;
       };
-      shapes.push({ circle: hd, r: headR + 1.2, color: base, clip: helmClip, d: hd.d + 1 });
       shapes.push({
-        a: { x: hd.x - headR - 1.2, y: browY - 0.5 },
-        b: { x: hd.x + headR + 1.2, y: browY - 0.5 },
+        circle: hd,
+        r: headR + 1.2,
+        color: base,
+        clip: helmClip,
+        d: hd.d + 0.3,
+        roundDepth: true,
+      });
+      shapes.push({
+        a: headPoint(-headR - 1.2, browY - 0.5),
+        b: headPoint(headR + 1.2, browY - 0.5),
         r: 0.7,
         color: shade,
-        d: hd.d + 1.1,
+        d: hd.d + headR + 1.1,
       });
       if (style === 'kabuto') {
         for (const sg of [1, -1]) {
@@ -721,47 +830,71 @@ export function blockGear(
     }
   } else if (slot === 'hair') {
     const capClip = (x: number, y: number) => {
-      const ox = x - hd.x,
-        oy = y - hd.y;
+      const { x: ox, y: oy } = headOffset(x, y);
       if (facingAway) return oy < headR * 0.45;
       return oy < -headR * 0.2 || (ox * back.x > headR * 0.25 && oy < headR * 0.35);
     };
     const tails: Shape[] = [];
-    if (style === 'ponytail' && !facingUs) {
+    if (style === 'ponytail') {
+      const a = sk.toScreen({ x: H.x, y: H.y - HR * 0.2, z: H.z - HR * 0.85 });
+      const b = sk.toScreen({ x: H.x + 2.5 * k, y: H.y + 13 * k, z: H.z - HR * 1.3 });
       tails.push({
-        a: sk.toScreen({ x: H.x, y: H.y - HR * 0.2, z: H.z - HR * 0.85 }),
-        b: sk.toScreen({ x: H.x, y: H.y + 15 * k, z: H.z - HR * 1.3 }),
-        r: 2.3 * kk,
+        a,
+        b,
+        r: (t) => (2.3 - t * 0.8) * kk,
+        maxR: 2.3 * kk,
         color: base,
-        d: hd.d - 1,
+        depthEnds: [a.d, b.d],
       });
+      // Short temple locks frame the face even when the tail is behind the
+      // head. The body depth hides the far lock as the character turns.
+      for (const side of [-1, 1]) {
+        const a = sk.toScreen({ x: H.x + side * HR * 0.8, y: H.y - HR * 0.1, z: H.z + HR * 0.45 });
+        const b = sk.toScreen({
+          x: H.x + side * HR * 0.87,
+          y: H.y + HR * 1.25,
+          z: H.z + HR * 0.25,
+        });
+        tails.push({ a, b, r: 0.85 * kk, color: base, depthEnds: [a.d, b.d] });
+      }
     } else if (style === 'long') {
-      for (const sg of [1, -1])
+      for (const sg of [1, -1]) {
+        const a = sk.toScreen({ x: H.x + sg * HR * 0.75, y: H.y - HR * 0.1, z: H.z - HR * 0.35 });
+        const b = sk.toScreen({ x: H.x + sg * HR * 0.85, y: H.y + 12 * k, z: H.z - HR * 0.6 });
         tails.push({
-          a: sk.toScreen({ x: H.x + sg * HR * 0.75, y: H.y - HR * 0.1, z: H.z - HR * 0.35 }),
-          b: sk.toScreen({ x: H.x + sg * HR * 0.85, y: H.y + 12 * k, z: H.z - HR * 0.6 }),
+          a,
+          b,
           r: 2.4 * kk,
           color: shade,
-          d: hd.d - 0.5,
+          depthEnds: [a.d, b.d],
         });
+      }
       if (!facingUs)
         tails.push({
           a: sk.toScreen({ x: H.x, y: H.y, z: H.z - HR * 0.8 }),
           b: sk.toScreen({ x: H.x, y: H.y + 12 * k, z: H.z - HR * 0.9 }),
           r: HR * 0.8,
           color: base,
-          d: hd.d - 0.6,
+          d: hd.d - sk.facing.fz * HR * 0.85,
         });
     } else if (style === 'bun' && !facingUs) {
       tails.push({
         circle: sk.toScreen({ x: H.x, y: H.y - HR * 0.65, z: H.z - HR * 0.8 }),
         r: 2.6 * kk,
         color: base,
-        d: hd.d + 0.5,
+        d: hd.d - sk.facing.fz * HR * 0.8,
+        roundDepth: true,
       });
     }
     shapes.push(...tails.filter((t) => (t.d ?? 0) < hd.d));
-    shapes.push({ circle: hd, r: headR + 0.7, color: base, clip: capClip, d: hd.d });
+    shapes.push({
+      circle: hd,
+      r: headR + 0.7,
+      color: base,
+      clip: capClip,
+      d: hd.d + 0.1,
+      roundDepth: true,
+    });
     shapes.push(...tails.filter((t) => (t.d ?? 0) >= hd.d));
   } else if (slot === 'beard') {
     if (sk.facing.fz > -0.5)
@@ -770,7 +903,7 @@ export function blockGear(
         b: sk.toScreen({ x: H.x, y: H.y + HR * 0.35 + 8 * k, z: H.z + HR * 0.6 }),
         r: 3.3 * kk,
         color: base,
-        d: hd.d + 1,
+        d: hd.d + HR * 0.8,
       });
   } else if (slot === 'back') {
     const bz = -4.2 * k * bulk;
@@ -813,11 +946,27 @@ export function blockGear(
         shapes.push({ a: hand, b: end, r: 0.8, color: base });
         shapes.push({ circle: end, r: 1.1, color: gem });
       } else if (style === 'staff') {
-        const top = { x: hand.x + u.x * 3, y: hand.y - 16 * k },
-          bottom = { x: hand.x - u.x * 1.5, y: hand.y + 11 * k };
-        shapes.push({ a: bottom, b: top, r: 1.0, color: base });
         // The gem flares at the height of a heal or while channelling.
         const flare = (anim === 'heal' && frame === 2) || anim === 'channel';
+        const top = {
+            x: hand.x + right.x * u.x * 3 - down.x * 16 * k,
+            y: hand.y + right.y * u.x * 3 - down.y * 16 * k,
+          },
+          bottom = {
+            x: hand.x - right.x * u.x * 1.5 + down.x * 11 * k,
+            y: hand.y - right.y * u.x * 1.5 + down.y * 11 * k,
+          };
+        // Slide the grip along the shaft when raised, retaining the staff's
+        // length and keeping the gem/flare in frame. Fallen staves rotate too.
+        const clearance = (flare ? 3.6 : 2.2) * kk + 2;
+        for (const axis of ['x', 'y'] as const) {
+          const shift =
+            Math.max(0, clearance - Math.min(top[axis], bottom[axis])) +
+            Math.min(0, F - clearance - Math.max(top[axis], bottom[axis]));
+          top[axis] += shift;
+          bottom[axis] += shift;
+        }
+        shapes.push({ a: bottom, b: top, r: 1.0, color: base });
         if (flare) shapes.push({ circle: top, r: 3.6 * kk, color: [158, 231, 179] });
         shapes.push({ circle: top, r: 2.2 * kk, color: flare ? [236, 255, 240] : gem });
         // A bolt leaves the hands while casting.
@@ -857,7 +1006,7 @@ export function blockGear(
         const drawing = anim === 'shoot' && frame >= 1 && frame <= 3 && draw;
         // Ordering shapes inside the weapon layer cannot put the string behind
         // an arm in the body layer. Give it its own depth so body occlusion can.
-        const stringDepth = (drawing ? Math.min(fa.d, draw.d) : fa.d) - 1;
+        const stringDepth = Math.min(fa.a.d, fa.b.d, ...(drawing ? [draw.a.d, draw.b.d] : [])) - 1;
         if (drawing) {
           const nock = { x: draw.b.x, y: hand.y };
           shapes.unshift({ a: pts[0], b: nock, r: 0.45, color: steel, d: stringDepth });
@@ -886,7 +1035,7 @@ export function blockGear(
             d: stringDepth,
           });
       }
-      for (const sh of shapes) sh.d ??= fa.d + 0.4;
+      for (const sh of shapes) sh.d ??= fa.b.d + 0.4;
     }
   } else if (slot === 'offhand') {
     const fa = seg('forearm', 'L');
@@ -917,7 +1066,7 @@ export function blockGear(
         shapes.push({ circle: c, r: 6.5 * kk, color: base, rx });
         shapes.push({ circle: c, r: 1.6 * kk, color: light });
       }
-      for (const sh of shapes) sh.d ??= fa.d + 0.6;
+      for (const sh of shapes) sh.d ??= fa.a.d + (fa.b.d - fa.a.d) * 0.6 + 0.6;
     }
   }
   shapes.sort((s1, s2) => (s1.d || 0) - (s2.d || 0));

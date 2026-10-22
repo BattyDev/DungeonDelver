@@ -37,6 +37,8 @@ interface Layer {
   visible: boolean;
   cls: LookClass | null;
   behind: boolean[];
+  /** Combat order is independent of direction overrides used while walking. */
+  behindCombat?: boolean;
   seeded: string[];
   style?: string;
   color?: string;
@@ -188,8 +190,9 @@ const wctx = work.getContext('2d')!;
 let scale = 8,
   hover: { x: number; y: number } | null = null;
 const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-function orderFor(dir: number) {
-  const behind = (l: Layer) => !!(l.behind && l.behind[dir]);
+function orderFor(dir: number, anim: AnimId = state.anim) {
+  const behind = (l: Layer) =>
+    ANIMS[anim].combat ? !!l.behindCombat : !!(l.behind && l.behind[dir]);
   const ls = classLayers();
   return [...ls.filter(behind), ...ls.filter((l) => !behind(l))];
 }
@@ -205,7 +208,7 @@ function composite(anim: AnimId, dir: number, frame: number, opts: CompositeOpts
     flip = src !== dir;
   const img = wctx.createImageData(F, F),
     d = img.data;
-  for (const layer of orderFor(src)) {
+  for (const layer of orderFor(src, anim)) {
     if (!layer.visible && !opts.all) continue;
     if (opts.only && layer.id !== opts.only) continue;
     if (opts.skipOthers && layer.id !== state.active) continue;
@@ -389,8 +392,12 @@ function render() {
   }
   const note = $('mirrorNote');
   note.hidden = !isMirrored(state.anim, state.dir);
-  if (!note.hidden)
-    note.textContent = `Mirrored from ${DIRS[MIRROR_SRC[state.dir]].k}. Turn off auto-mirror in Project to draw this side.`;
+  if (!note.hidden) {
+    const source = DIRS[MIRROR_SRC[state.dir]].k;
+    $('mirrorNoteText').textContent =
+      `${DIRS[state.dir].k} is a mirrored preview. Draw on ${source}; both views update together.`;
+    $('drawSourceBtn').textContent = `Draw on ${source}`;
+  }
   renderFrames();
   updateHint();
 }
@@ -604,6 +611,7 @@ function buildSegs() {
   });
 }
 function syncSegs() {
+  $<HTMLAnchorElement>('portraitPageLink').href = `portraits.html?body=${body()}`;
   document
     .querySelectorAll<HTMLElement>('#animSeg button')
     .forEach((b) => b.classList.toggle('on', b.dataset.anim === state.anim));
@@ -713,17 +721,23 @@ function renderLayers() {
     const right = document.createElement('span');
     right.className = 'layer-right';
     const src = isMirrored(state.anim, state.dir) ? MIRROR_SRC[state.dir] : state.dir;
-    const on = !!(layer.behind && layer.behind[src]);
+    const combat = ANIMS[state.anim].combat;
+    const on = combat ? !!layer.behindCombat : !!(layer.behind && layer.behind[src]);
     const bh = document.createElement('button');
     bh.type = 'button';
     bh.className = 'behind' + (on ? ' on' : '');
     bh.textContent = 'Behind';
     bh.setAttribute('aria-pressed', String(on));
-    bh.title = `Draw behind the other layers when facing ${DIRS[src].k}`;
+    bh.title = combat
+      ? 'Draw behind the other layers in combat'
+      : `Draw behind the other layers when facing ${DIRS[src].k}`;
     bh.addEventListener('click', (e) => {
       e.stopPropagation();
-      layer.behind = layer.behind || new Array(8).fill(false);
-      layer.behind[src] = !layer.behind[src];
+      if (combat) layer.behindCombat = !layer.behindCombat;
+      else {
+        layer.behind = layer.behind || new Array(8).fill(false);
+        layer.behind[src] = !layer.behind[src];
+      }
       changed();
     });
     const ct = document.createElement('span');
@@ -887,12 +901,27 @@ function pickAt(x: number, y: number) {
 function guardEditable() {
   if (isMirrored(state.anim, state.dir)) {
     toast(
-      `${DIRS[state.dir].k} is mirrored from ${DIRS[MIRROR_SRC[state.dir]].k}. Draw there, or turn off auto-mirror in Project.`,
+      `Choose “Draw on ${DIRS[MIRROR_SRC[state.dir]].k}” above the canvas. Your changes also update ${DIRS[state.dir].k}.`,
     );
+    $('drawSourceBtn').focus({ preventScroll: true });
     return false;
   }
   return true;
 }
+$('drawSourceBtn').addEventListener('click', () => {
+  if (!isMirrored(state.anim, state.dir)) return;
+  stopPlaying();
+  const preview = DIRS[state.dir].k;
+  state.dir = MIRROR_SRC[state.dir];
+  hover = null;
+  refresh();
+  board.focus({ preventScroll: true });
+  toast(`Draw on ${DIRS[state.dir].k}. ${preview} updates automatically.`);
+});
+$('mirrorSettingsBtn').addEventListener('click', () => {
+  document.querySelector<HTMLButtonElement>('[role="tab"][data-tab="project"]')!.click();
+  input('autoMirrorChk').focus();
+});
 let drawing = false,
   last: { x: number; y: number } | null = null;
 function cellFrom(e: PointerEvent) {
@@ -1430,7 +1459,20 @@ function addPreset(cls: LookClass) {
     (behindDirs || []).forEach((d) => (layer.behind[d] = true));
     added.push(layer);
   }
-  state.layers.push(...added);
+  const hair = state.layers.findIndex((l) => l.slot === 'hair');
+  // Starter hair hangs over the shirt, under the helmet, as in game defaults.
+  // Subsequent manual layer moves remain under the artist's control.
+  if (hair < 0) state.layers.push(...added);
+  else {
+    state.layers.splice(
+      hair,
+      0,
+      ...added.filter((l) => ['pants', 'boots', 'chest', 'gloves'].includes(l.slot)),
+    );
+    state.layers.push(
+      ...added.filter((l) => !['pants', 'boots', 'chest', 'gloves'].includes(l.slot)),
+    );
+  }
   return added;
 }
 function switchBody() {
@@ -1819,7 +1861,7 @@ function manifest(files: { layer: string; anim: AnimId; file: string }[]) {
   }
   const order: Record<string, string[]> = {};
   DIRS.forEach((d, i) => {
-    order[d.k] = orderFor(isMirrored('walk', i) ? MIRROR_SRC[i] : i).map(
+    order[d.k] = orderFor(isMirrored('walk', i) ? MIRROR_SRC[i] : i, 'walk').map(
       (l) => `${l.slot}:${l.name}`,
     );
   });
@@ -2121,6 +2163,11 @@ async function boot() {
   }
   if (!loaded) seedStarter();
   const fromGame = openOnPlayer();
+  const requestedBody = new URLSearchParams(location.search).get('body');
+  if (requestedBody && /^(human|orc|elf|dwarf|gnome)[FM]$/.test(requestedBody)) {
+    state.race = requestedBody.slice(0, -1) as Race;
+    state.sex = requestedBody.slice(-1) as Sex;
+  }
   ensureSeeded();
   ensureActiveInMode();
   buildAnimSeg();

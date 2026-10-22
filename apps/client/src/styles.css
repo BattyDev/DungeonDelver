@@ -2087,6 +2087,22 @@ kbd {
   height: 64px;
   margin: -4px 0 -2px;
 }
+.roster-card canvas.painted-portrait {
+  width: 64px;
+  height: 64px;
+  margin: -4px 0 -2px;
+}
+.avatar.portrait canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+.hire-portrait.painted-portrait {
+  background: radial-gradient(ellipse at 50% 35%, #33494a, #0c171b);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
 .roster-card strong {
   font-size: 12px;
   font-weight: 500;

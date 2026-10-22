@@ -230,5 +230,7 @@ export type GameCommand =
   | { type: 'tick'; sprint: boolean }
   | { type: 'interact' }
   | { type: 'puzzle'; action: PuzzleAction }
-  | { type: 'combat'; action: Action }
-  | { type: 'aiTurn' };
+  | { type: 'combat'; action: Action; deferSettlement?: boolean }
+  | { type: 'aiTurn'; deferSettlement?: boolean }
+  /** Apply a finished encounter's rewards/escape/wipe after its presentation. */
+  | { type: 'finishCombat' };

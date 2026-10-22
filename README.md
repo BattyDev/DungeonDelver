@@ -50,9 +50,13 @@ The camera follows from a lower, closer angle, smoothing its position and aim to
 
 Characters are 64 × 64 pixel paper dolls: a base body, hair and class gear layers, drawn over a pose guide, with idle and walk in eight directions (NE, E and SE mirror NW, W and SW) and one combat camera facing east. The drawing code in `apps/client/src/paperdoll/` is shared by the studio and the game, so every race, sex and class has a default look before anyone draws.
 
+Bodies have connected necks/joints and depth-aware limb/headwear overlap. Female defaults use distinct shoulder, waist and hip proportions with fitted armour and face-framing hair. Saved Studio projects keep their existing pixels; **Project → Reset** regenerates selected starter layers with the current renderer and supports Undo. Use `node tools/sprite-consistency.mjs after --full` with Vite running for the complete walk/combat audit sheets.
+
 - The studio (`studio.html`) edits layers per race and sex, previews them in a walk-around changing room (auto walk, WASD, and a button for each combat move), and exports sheets, a zip with a manifest, or a project file.
+- Walking views E, NE and SE mirror W, NW and SW. Choose the source direction in the compass, or use the canvas banner's **Draw on W/NW/SW** shortcut, then select a layer, Pencil and a color to draw. Both directions update together. **Symmetry** mirrors brush strokes within one frame; direction mirroring is configured in **Project**.
 - **Send to game** stores the current body and class's sheets in this browser (`dungeon-delver.wardrobe.v1`). The game uses them for your own character when its race, sex and class match; everyone else keeps the default look. Project › In the game lists sent looks and reverts them.
 - The studio and the game share the same five classes, so any look drawn for a class can be sent and played.
+- **Portraits** (`portraits.html`, the Portraits tab in the studio): 64 × 64 conversation faces, optionally animated, painted for a race and sex or for one character. Defaults are ten painted busts (`apps/client/public/portraits/defaults.png`, rebuilt by `tools/portraits/slice_defaults.py`). **Use portrait in game** stores a portrait in this browser (`dungeon-delver.portraits.v1`).
 - The studio has zoom (+, −, 0, or Ctrl + wheel) with Space-drag panning, a play button (P), onion skins for the previous (red) and next (green) frames, the race's skin and hair plus recent colors beside the palette, a side-by-side preview before Send to game, and a shortcut list on <kbd>?</kbd>. The ghost overlay defaults to an outline.
 - Combat plays the drawn animations: attackers lunge and play attack, slash or heal; targets play hurt or death, with damage numbers.
 

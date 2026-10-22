@@ -36,18 +36,19 @@ import type { WorldClick } from './scene/world';
 import { enemyTexture } from './scene/sprites';
 import { Keyboard } from './input/keyboard';
 import { CombatStage } from './ui/combat-stage';
+import { portraitHtml, tickPortraits } from './ui/portraits';
 import { Minimap } from './ui/minimap';
 import { sfx } from './ui/sfx';
 import { icon, escapeHtml as esc } from './ui/icons';
 import { HALL, HALL_MAP, hallRoomAt } from './scene/hall';
 import { canStand, moveOnGrid } from './scene/grid';
 import { lookById } from './scene/cast';
-import { characterLook, defaultLook, lookImage, lookPortrait, pumpDolls } from './paperdoll/looks';
+import { characterLook, defaultLook, lookImage, pumpDolls } from './paperdoll/looks';
 import type { Look } from './paperdoll/looks';
 import { GAME_CLASS_LOOK, RACES, SEXES } from './paperdoll/model';
 import { RETURN_KEY } from './paperdoll/wardrobe';
-const avatarLook = (look: Look, classId: ClassId) =>
-  `<span class="avatar portrait" style="--class-color:${CLASSES[classId].color}"><img src="${lookPortrait(look)}" alt=""></span>`;
+const avatarLook = (look: Look, classId: ClassId, person = '') =>
+  `<span class="avatar portrait" style="--class-color:${CLASSES[classId].color}">${portraitHtml(look, person)}</span>`;
 const AUTO_KEY = 'dungeon-delver.auto-battle';
 function readAutoBattle() {
   try {
@@ -57,7 +58,7 @@ function readAutoBattle() {
   }
 }
 const characterAvatar = (c: Pick<Character, 'id' | 'classId' | 'appearance'>, player: boolean) =>
-  avatarLook(player ? characterLook(c, true) : lookById(c.id, c.classId), c.classId);
+  avatarLook(player ? characterLook(c, true) : lookById(c.id, c.classId), c.classId, c.id);
 const classCopy: Record<ClassId, string> = {
   tank: 'Hold the line. Protect your party with steel and stubborn resolve.',
   healer: 'Keep hope alive. Mend your allies and bring everyone home.',
@@ -139,7 +140,12 @@ export class Controller {
   }
   private dispatch(command: GameCommand) {
     const previous = this.state;
-    this.state = transition(this.state, command);
+    this.state = transition(
+      this.state,
+      command.type === 'combat' || command.type === 'aiTurn'
+        ? { ...command, deferSettlement: true }
+        : command,
+    );
     if (previous === this.state) return;
     this.scheduleSave();
     const lightweight = command.type === 'tick' || command.type === 'move';
@@ -723,6 +729,7 @@ export class Controller {
       }
       if (
         this.state.phase === 'combat' &&
+        this.state.combat.outcome === 'active' &&
         !activeFighter(this.state.combat).player &&
         ms - this.lastAI >= 800
       ) {
@@ -731,6 +738,7 @@ export class Controller {
       }
       if (
         this.state.phase === 'combat' &&
+        this.state.combat.outcome === 'active' &&
         activeFighter(this.state.combat).player &&
         this.queuedAction
       ) {
@@ -746,6 +754,7 @@ export class Controller {
       } else if (
         this.autoBattle &&
         this.state.phase === 'combat' &&
+        this.state.combat.outcome === 'active' &&
         activeFighter(this.state.combat).player &&
         ms - this.lastAI >= 800
       ) {
@@ -756,7 +765,16 @@ export class Controller {
     } else this.motionTime = 0;
     if (this.world) this.world.animate(this.time);
     else pumpDolls();
-    this.combatStage?.draw(delta);
+    this.combatStage?.draw(this.paused || this.modal ? 0 : delta);
+    tickPortraits(document, ms);
+    if (
+      !this.paused &&
+      !this.modal &&
+      this.state.phase === 'combat' &&
+      this.state.combat.outcome !== 'active' &&
+      this.combatStage?.readyToLeave
+    )
+      this.dispatch({ type: 'finishCombat' });
     requestAnimationFrame((t) => this.frame(t));
   }
   /** `variant` widens or compacts the dialog, e.g. 'wide' for the roster. */
@@ -807,7 +825,7 @@ export class Controller {
     const look = lookById(g.id, g.character.classId);
     // Two columns, portrait and voice beside stats and gear, so the whole offer fits on one screen.
     this.openModal(
-      `<div class="hire-card"><div class="hire-who"><img class="pixel-art hire-portrait" src="${lookImage(look, 'idle', 0)}" alt=""><span class="eyebrow">${g.community ? 'Community companion' : `Offline snapshot of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${RACES[look.race].label} ${CLASSES[g.character.classId].name} · ${g.style}</small><blockquote>“${g.dialogue}”</blockquote></div><div class="hire-what"><div class="stat-grid">${[
+      `<div class="hire-card"><div class="hire-who">${portraitHtml(look, g.id, 'hire-portrait', `${g.character.name} speaking`, true)}<span class="eyebrow">${g.community ? 'Community companion' : `Offline snapshot of @${esc(g.character.name.toLowerCase())}`}</span><h2>${g.character.name}</h2><small>${RACES[look.race].label} ${CLASSES[g.character.classId].name} · ${g.style}</small><blockquote>“${g.dialogue}”</blockquote></div><div class="hire-what"><div class="stat-grid">${[
         ['HP', stats.hp],
         ['ATK', stats.atk],
         ['DEF', stats.def],
@@ -850,7 +868,7 @@ export class Controller {
   }
   private rosterRow(g: Ghost, hires: Ghost[]) {
     const hired = hires.some((h) => h.id === g.id);
-    return `<button class="roster-card ${hired ? 'hired' : ''}" data-action="ghost" data-id="${g.id}" style="--class-color:${CLASSES[g.character.classId].color}"><img class="pixel-art" src="${lookImage(lookById(g.id, g.character.classId), 'idle', 0)}" alt=""><strong>${g.character.name}</strong><small>${CLASSES[g.character.classId].name} · ${g.style.replace('Community • ', '')}</small><span class="gold">${hired ? `${icon('check', 14)} In party` : g.price ? `${g.price} ${icon('coin', 12)}` : 'Free'}</span></button>`;
+    return `<button class="roster-card ${hired ? 'hired' : ''}" data-action="ghost" data-id="${g.id}" style="--class-color:${CLASSES[g.character.classId].color}">${portraitHtml(lookById(g.id, g.character.classId), g.id, '', g.character.name)}<strong>${g.character.name}</strong><small>${CLASSES[g.character.classId].name} · ${g.style.replace('Community • ', '')}</small><span class="gold">${hired ? `${icon('check', 14)} In party` : g.price ? `${g.price} ${icon('coin', 12)}` : 'Free'}</span></button>`;
   }
   private openLoadout() {
     if (this.state.phase !== 'hub') return;
@@ -956,6 +974,7 @@ export class Controller {
     const c = s.combat,
       actor = activeFighter(c),
       isPlayer = actor.player;
+    const finishing = c.outcome !== 'active';
     this.combatStage ??= new CombatStage(c, s.progress, s.floor.id, (id) => this.selectTarget(id));
     const player = c.fighters.find((f) => f.player)!;
     const button = (
@@ -964,8 +983,9 @@ export class Controller {
       disabled = false,
     ) => {
       const queued = this.queuedAction?.type === (type === 'potion' ? 'item' : type);
-      return `<button class="${type === 'attack' ? 'primary' : ''} ${queued ? 'queued' : ''}" data-action="${type}" aria-pressed="${queued}" ${player.hp <= 0 || disabled ? 'disabled' : ''}>${label}</button>`;
+      return `<button class="${type === 'attack' ? 'primary' : ''} ${queued ? 'queued' : ''}" data-action="${type}" aria-pressed="${queued}" ${finishing || player.hp <= 0 || disabled ? 'disabled' : ''}>${label}</button>`;
     };
+    if (finishing) this.queuedAction = undefined;
     const queued = this.queuedAction;
     const queuedName =
       queued?.type === 'skill'
@@ -979,7 +999,9 @@ export class Controller {
       queued && 'target' in queued
         ? c.fighters.find((f) => f.id === queued.target)?.name
         : undefined;
-    const queueHtml = `<div class="combat-queue" role="status">${queued ? `<span>Queued: <strong>${esc(queuedName)}${queuedTarget ? ` → ${esc(queuedTarget)}` : ''}</strong></span><button data-action="cancel-queue" aria-label="Cancel queued action">${icon('close', 12)} Cancel</button>` : `<span>${this.autoBattle ? 'Auto-battle is on: everyone fights on their own. Pick an action to override your next turn.' : isPlayer ? 'Choose a target, then an action.' : 'Choose your next action now. It will fire on your turn.'}</span>`}</div>`;
+    const queueHtml = finishing
+      ? `<div class="combat-queue" role="status">${c.outcome === 'victory' ? 'Returning to the expedition…' : c.outcome === 'wipe' ? 'Returning to safety…' : 'Escaping…'}</div>`
+      : `<div class="combat-queue" role="status">${queued ? `<span>Queued: <strong>${esc(queuedName)}${queuedTarget ? ` → ${esc(queuedTarget)}` : ''}</strong></span><button data-action="cancel-queue" aria-label="Cancel queued action">${icon('close', 12)} Cancel</button>` : `<span>${this.autoBattle ? 'Auto-battle is on: everyone fights on their own. Pick an action to override your next turn.' : isPlayer ? 'Choose a target, then an action.' : 'Choose your next action now. It will fire on your turn.'}</span>`}</div>`;
     const enemies = c.fighters.filter((f) => f.team === 'enemy' && f.hp > 0);
     if (!c.fighters.some((f) => f.hp > 0 && f.id === this.selectedTarget))
       this.selectedTarget = enemies[0]?.id ?? '';
@@ -999,7 +1021,7 @@ export class Controller {
       const status = [f.defending ? 'Guarding' : '', f.tauntTurns ? 'Taunting' : '']
         .filter(Boolean)
         .join(', ');
-      return `<button class="fighter turn-chip ${f.team} ${actor.id === f.id ? 'active' : ''} ${f.hp <= 0 ? 'dead' : ''} ${this.selectedTarget === f.id ? 'targeted' : ''}" data-action="target" data-id="${f.id}" ${f.hp <= 0 ? 'disabled' : ''} aria-label="${esc(f.name)}${f.player ? ' (you)' : ''}, ${f.hp} of ${f.stats.hp} HP, ${f.mp} MP${status ? `, ${status}` : ''}" title="${esc(f.name)}${f.boss ? ' ♛' : ''} · ${f.hp}/${f.stats.hp} HP · ${f.mp} MP${status ? ` · ${status}` : ''}">${portrait}<span class="chip-name">${esc(f.player ? 'You' : f.name.split(' ')[0])}</span><span class="bar"><span style="width:${(f.hp / f.stats.hp) * 100}%"></span></span></button>`;
+      return `<button class="fighter turn-chip ${f.team} ${!finishing && actor.id === f.id ? 'active' : ''} ${f.hp <= 0 ? 'dead' : ''} ${this.selectedTarget === f.id ? 'targeted' : ''}" data-action="target" data-id="${f.id}" ${finishing || f.hp <= 0 ? 'disabled' : ''} aria-label="${esc(f.name)}${f.player ? ' (you)' : ''}, ${f.hp} of ${f.stats.hp} HP, ${f.mp} MP${status ? `, ${status}` : ''}" title="${esc(f.name)}${f.boss ? ' ♛' : ''} · ${f.hp}/${f.stats.hp} HP · ${f.mp} MP${status ? ` · ${status}` : ''}">${portrait}<span class="chip-name">${esc(f.player ? 'You' : f.name.split(' ')[0])}</span><span class="bar"><span style="width:${(f.hp / f.stats.hp) * 100}%"></span></span></button>`;
     };
     stage.insertAdjacentHTML(
       'beforeend',
@@ -1008,13 +1030,14 @@ export class Controller {
         .map((m) => `<p>${esc(m)}</p>`)
         .join(
           '',
-        )}</div><div class="combat-controls"><div class="turn-banner">${icon('sword', 14)} ${isPlayer ? 'Your turn. Pick a target on the field or in the turn order, then an action.' : `${esc(actor.name)} is acting…`}</div>${queueHtml}<div class="combat-menu">${button('attack', `${icon('sword', 14)} Attack`)}${button('skill', `${CLASSES[player.classId].skill} · ${CLASSES[player.classId].cost}`, player.mp < CLASSES[player.classId].cost)}${button('potion', `Potion (${c.resources.potions})`, c.resources.potions <= 0)}${button('defend', `${icon('shield', 14)} Defend`)}${button('flee', 'Flee')}<button class="auto-toggle ${this.autoBattle ? 'on' : ''}" data-action="auto-battle" aria-pressed="${this.autoBattle}" title="Your character picks its own actions">${this.autoBattle ? 'Auto: on' : 'Auto: off'}</button></div></div></div></section>`,
+        )}</div><div class="combat-controls"><div class="turn-banner">${icon('sword', 14)} ${finishing ? (c.outcome === 'victory' ? 'Victory! The last foe falls…' : c.outcome === 'wipe' ? 'Your party has fallen…' : 'Leaving the battlefield…') : isPlayer ? 'Your turn. Pick a target on the field or in the turn order, then an action.' : `${esc(actor.name)} is acting…`}</div>${queueHtml}<div class="combat-menu">${button('attack', `${icon('sword', 14)} Attack`)}${button('skill', `${CLASSES[player.classId].skill} · ${CLASSES[player.classId].cost}`, player.mp < CLASSES[player.classId].cost)}${button('potion', `Potion (${c.resources.potions})`, c.resources.potions <= 0)}${button('defend', `${icon('shield', 14)} Defend`)}${button('flee', 'Flee')}<button class="auto-toggle ${this.autoBattle ? 'on' : ''}" data-action="auto-battle" ${finishing ? 'disabled' : ''} aria-pressed="${this.autoBattle}" title="Your character picks its own actions">${this.autoBattle ? 'Auto: on' : 'Auto: off'}</button></div></div></div></section>`,
     );
     this.combatStage.setFighters(c.fighters);
     stage.querySelector('.battlefield')!.append(this.combatStage.canvas);
     this.combatStage.selected = this.selectedTarget;
   }
   private selectTarget(id: string) {
+    if (this.state.phase !== 'combat' || this.state.combat.outcome !== 'active') return;
     this.selectedTarget = id;
     if (this.state.phase === 'combat' && this.queuedAction && 'target' in this.queuedAction) {
       const friendly =
@@ -1029,7 +1052,7 @@ export class Controller {
   }
   private combatAction(type: Action['type']) {
     const s = this.state;
-    if (s.phase !== 'combat') return;
+    if (s.phase !== 'combat' || s.combat.outcome !== 'active') return;
     const actor = s.combat.fighters.find((f) => f.player)!;
     if (actor.hp <= 0) return;
     const isPlayer = activeFighter(s.combat).player;

@@ -8,6 +8,7 @@ import {
   createEnemy,
   GHOSTS,
   CLASSES,
+  transition,
 } from '../../packages/rules/src/index';
 import type { GameState } from '../../packages/rules/src/index';
 import type { Page } from '@playwright/test';
@@ -165,6 +166,93 @@ async function pausedCombat(page: Page, state: GameState) {
   await page.clock.pauseAt(new Date(Date.now() + 1000));
   await fixture(page, state);
 }
+
+test('the final hit shows zero health and the held death pose before leaving combat', async ({
+  page,
+}, testInfo) => {
+  const state = queuedCombat();
+  state.floor.patrols.forEach((p) => (p.pauseTicks = 99999));
+  state.combat.fighters = state.combat.fighters.filter((f) => f.id !== 'moss-1');
+  const enemy = state.combat.fighters.find((f) => f.id === 'moss-0')!;
+  enemy.hp = 1;
+  enemy.stats.hp = 20;
+  state.combat.fighters.find((f) => f.player)!.stats.atk = 999;
+  state.combat.order = ['player', 'ghost-0', 'moss-0'];
+  state.combat.cursor = 0;
+  const xp = state.progress.player.xp;
+  await pausedCombat(page, state);
+  await page.getByRole('button', { name: 'Attack', exact: true }).click({ force: true });
+  await expect(page.locator('.turn-banner')).toContainText('Victory!');
+  await expect(page.getByRole('button', { name: 'Attack', exact: true })).toBeDisabled();
+  await page.clock.runFor(1200);
+  await expect(page.locator('.combat-overlay')).toBeVisible();
+  await expect(page.locator('.turn-chip[data-id="moss-0"]')).toHaveAttribute(
+    'aria-label',
+    /0 of 20 HP/,
+  );
+  const visible = await page.evaluate(async () => {
+    const sourceUrl = '/DungeonDelver/src/paperdoll/creatures.ts';
+    const { creatureFor } = await import(sourceUrl);
+    const source = creatureFor('slime'),
+      idle = source.frameNow('idle', 2, 0),
+      death = source.frameNow('death', 2, 5);
+    const ctx = document.querySelector<HTMLCanvasElement>('.battlefield-canvas')!.getContext('2d')!;
+    const top = idle.findIndex((v: number, i: number) => i % 4 === 3 && v > 0),
+      height = 62 - Math.floor(top / (64 * 4));
+    const bar = [...ctx.getImageData(183, 108 - height - 4, 26, 2).data];
+    let checked = 0,
+      matches = true;
+    for (let y = 0; y < 64; y++)
+      for (let x = 0; x < 64; x++) {
+        const i = (y * 64 + x) * 4;
+        if (!death[i + 3]) continue;
+        const shown = ctx.getImageData(196 - 32 + x, 108 - 62 + y, 1, 1).data;
+        checked++;
+        if (shown.some((v, c) => v !== death[i + c])) matches = false;
+      }
+    return { zeroBar: bar.every((v, i) => v === [11, 20, 22, 255][i % 4]), matches, checked };
+  });
+  expect(visible.zeroBar).toBe(true);
+  expect(visible.checked).toBeGreaterThan(50);
+  expect(visible.matches).toBe(true);
+  expect((await saved(page)).progress.player.xp).toBe(xp);
+  await page
+    .locator('.combat-overlay')
+    .screenshot({ path: testInfo.outputPath('final-hit-and-death.png') });
+  await page.clock.runFor(1600);
+  await expect(page.locator('.combat-overlay')).toHaveCount(0);
+  expect((await saved(page)).phase).toBe('floor');
+  expect((await saved(page)).progress.player.xp).toBeGreaterThan(xp);
+});
+
+test('reloading a finished encounter resumes settlement without duplicating rewards', async ({
+  page,
+}) => {
+  const state = queuedCombat();
+  state.floor.patrols.forEach((p) => (p.pauseTicks = 99999));
+  state.combat.fighters = state.combat.fighters.filter((f) => f.id !== 'moss-1');
+  const enemy = state.combat.fighters.find((f) => f.id === 'moss-0')!;
+  enemy.hp = 1;
+  state.combat.fighters.find((f) => f.player)!.stats.atk = 999;
+  state.combat.order = ['player', 'ghost-0', 'moss-0'];
+  state.combat.cursor = 0;
+  const pending = transition(state, {
+    type: 'combat',
+    action: { type: 'attack', target: 'moss-0' },
+    deferSettlement: true,
+  });
+  await pausedCombat(page, pending);
+  await expect(page.locator('.turn-banner')).toContainText('Victory!');
+  await page.clock.runFor(1500);
+  await expect(page.locator('.combat-overlay')).toHaveCount(0);
+  const settled = await saved(page);
+  expect(settled.phase).toBe('floor');
+  expect(settled.progress.player.xp).toBe(state.progress.player.xp + enemy.xp);
+  expect(settled.run.unbankedGold).toBe(state.run.unbankedGold + enemy.gold);
+  await page.reload();
+  expect((await saved(page)).progress.player.xp).toBe(settled.progress.player.xp);
+  expect((await saved(page)).run.unbankedGold).toBe(settled.run.unbankedGold);
+});
 
 test('combat pre-input can be replaced, retargeted, canceled, and executes once on the player turn', async ({
   page,

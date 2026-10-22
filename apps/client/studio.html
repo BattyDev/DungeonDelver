@@ -38,6 +38,11 @@
         </div>
       </header>
 
+      <nav class="wardrobe-pages" aria-label="Wardrobe pages">
+        <a href="studio.html" aria-current="page">Sprites</a>
+        <a href="portraits.html" id="portraitPageLink">Portraits</a>
+      </nav>
+
       <div class="workspace">
         <nav class="panel tools" aria-label="Tools">
           <h2>Tools</h2>
@@ -66,12 +71,12 @@
                 <path d="M11 7l-7 7v4h4l7-7" /></svg
               >Pick<kbd>I</kbd>
             </button>
-            <button type="button" id="mirrorBtn" title="Mirror strokes left/right (M)">
+            <button type="button" id="mirrorBtn" title="Mirror brush strokes within this frame (M)">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3v18" />
                 <path d="M8 7L4 12l4 5z" />
                 <path d="M16 7l4 5-4 5z" /></svg
-              >Mirror<kbd>M</kbd>
+              >Symmetry<kbd>M</kbd>
             </button>
             <button type="button" id="sizeBtn" title="Brush size (cycles 1–3)">
               <span class="size-dot" id="sizeNum">1</span>Size
@@ -135,8 +140,18 @@
           </div>
           <div class="board-wrap">
             <div class="stage">
-              <canvas id="board" width="512" height="512" aria-label="Drawing board"></canvas>
-              <span class="mirror-note" id="mirrorNote" hidden></span>
+              <canvas
+                id="board"
+                width="512"
+                height="512"
+                aria-label="Drawing board"
+                tabindex="0"
+              ></canvas>
+              <div class="mirror-note" id="mirrorNote" hidden>
+                <span id="mirrorNoteText"></span>
+                <button type="button" id="drawSourceBtn" class="primary">Draw on W</button>
+                <button type="button" id="mirrorSettingsBtn">Mirror settings</button>
+              </div>
             </div>
             <div class="board-tools">
               <button type="button" id="zoomOut" title="Zoom out (−)" aria-label="Zoom out">
@@ -265,8 +280,8 @@
                 <span class="small" id="presetHint"></span>
               </div>
               <p class="small">
-                Top of the list draws on top. "Behind" sends a layer under the others for the
-                current direction only. Body and hair are shared by every class; gear belongs to one
+                Top of the list draws on top. "Behind" applies to the current walking direction, or
+                separately to combat. Body and hair are shared by every class; gear belongs to one
                 class.
               </p>
             </div>

@@ -1,8 +1,16 @@
 # Dungeon Delver — local handoff
 
-Updated October 21, 2026. This document is for the owner and the next local coding session.
+Updated October 22, 2026. This document is for the owner and the next local coding session.
 
 ## Start here
+
+**October 22 portraits release:** a Portrait Studio (`portraits.html`) paints 64 × 64, optionally animated conversation faces per race/sex or per character, used across the HUD, roster, hire card and turn order. Ten revised defaults are reduced from a generated reference into editable pixels (`apps/client/public/portraits/defaults-v2.png`); the neck remains exposed and the fallback hair order is corrected. The palette includes the painting's own colours. Existing drafts stay intact; **Default face** refreshes only the selected frame, with Undo. Reference, exact prompt, checks and review captures are in the Portraits section of `docs/VISUALS-HANDOFF.md`.
+
+**October 22 combat ending release:** final blows now remain on the battlefield through the impact, health drain to **0 HP**, complete death animation and a short held pose. Combat inputs stop during the ending; rewards/escape/wipe apply afterward through `finishCombat`. Reloading a terminal combat save safely settles it once. See `docs/VISUALS-HANDOFF.md` and `docs/previews/combat-ending.png`; combined validation is 76 unit tests, strict typecheck, production build and 14 Chromium checks.
+
+**October 22 sprite consistency release:** the shared rig/rasterizer now joins heads with necks and round joints, resolves limb/head/ear overlap per pixel, fixes the north ponytail and diagonal helmet openings, fits armour to clearer female shoulder/waist/hip proportions, rotates headwear/staves on fallen bodies, and fixes combat held-item ordering. See `docs/VISUALS-HANDOFF.md` for the audit sheets and saved-Studio-art behavior. Current checks: 72 unit tests, strict typecheck, production build and 12 Chromium checks. The earlier mirrored-view drawing shortcut is also still local.
+
+**Latest visual release (October 21):** V1–V5, V9 and V11 are live at https://battydev.com/DungeonDelve/ through domain PR https://github.com/BattyDev/BattyDev.github.io/pull/27. Source PR https://github.com/BattyDev/DungeonDelver/pull/2 is merged. All 61 unit tests, strict typecheck, build and 11 Chromium checks passed in GitHub Actions; the domain Pages deployment succeeded. All nine public game files matched the tested `/DungeonDelve/` build. A fresh live browser verified an Orc Archer, three hires, floor 1 patrols, persisted reload and the studio with no page/asset errors. Browser checks now use one worker and a 60-second budget on local and hosted software WebGL runners. See `handoff/visuals-release/verification.json` for this local session's release SHAs and evidence.
 
 The MVP has been built. Continue from this implementation; do not start by rebuilding the game from scratch.
 

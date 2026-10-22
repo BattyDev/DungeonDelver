@@ -174,18 +174,25 @@ export function transition(state: GameState, command: GameCommand): GameState {
     return { phase: 'floor', progress: state.progress, run, floor: run.floors[1] };
   }
   if (state.phase === 'combat') {
+    if (command.type === 'finishCombat') return settle(state);
+    if (state.combat.outcome !== 'active') return state;
     if (command.type === 'combat') {
       if (!activeFighter(state.combat).player) return state;
       const combat = resolveTurn(state.combat, command.action);
-      return combat === state.combat ? state : settle({ ...state, combat });
+      return combat === state.combat
+        ? state
+        : command.deferSettlement
+          ? { ...state, combat }
+          : settle({ ...state, combat });
     }
     if (command.type === 'aiTurn') {
       if (activeFighter(state.combat).player) return state;
       const picked = chooseAction(state.combat);
-      return settle({
+      const next = {
         ...state,
         combat: resolveTurn({ ...state.combat, rng: picked.seed }, picked.action),
-      });
+      };
+      return command.deferSettlement ? next : settle(next);
     }
     return state;
   }
