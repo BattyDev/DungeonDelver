@@ -2186,3 +2186,19 @@ kbd {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Journal: start a puzzle over, or reveal what to do next. */
+.puzzle-tools {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.puzzle-hint summary {
+  cursor: pointer;
+  color: var(--gold);
+  font-size: 12px;
+}
+.puzzle-hint p {
+  font-size: 12px;
+  margin: 8px 0 0;
+}

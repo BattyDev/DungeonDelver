@@ -209,9 +209,11 @@ export function transition(state: GameState, command: GameCommand): GameState {
     // All puzzle interactions require proximity. Boss progress comes only from combat settlement.
     const p = s.floor.puzzle,
       a = command.action;
-    if (a.type === 'restart' && p.type === 'plates') {
+    if (a.type === 'restart' && p.type !== 'key') {
+      // Any puzzle can be put back to its start, so no floor can soft-lock. Stones need the
+      // player out of the way; flames and levers leave them where they stand.
       s.floor.puzzle = clone(def.puzzle);
-      s.floor.position = { ...(def.restart ?? def.spawn) };
+      if (p.type === 'plates') s.floor.position = { ...(def.restart ?? def.spawn) };
     } else if (
       a.type === 'lever' &&
       p.type === 'levers' &&

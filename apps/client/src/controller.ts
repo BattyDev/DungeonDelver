@@ -883,12 +883,49 @@ export class Controller {
     const modal = this.modal?.querySelector('.modal');
     if (modal) modal.scrollTop = scroll;
   }
+  /** Journal buttons to start a puzzle over, and a hint that solves the braziers from where they are now. */
+  private puzzleTools() {
+    const s = this.state;
+    if (s.phase !== 'floor' || isSolved(s.floor.puzzle)) return '';
+    const p = s.floor.puzzle;
+    const reset =
+      p.type === 'plates'
+        ? 'Reset stones (you return to the vault door)'
+        : p.type === 'braziers'
+          ? 'Put out every brazier and start over'
+          : p.type === 'levers'
+            ? 'Reset every lever and start over'
+            : '';
+    if (!reset) return '';
+    const hint =
+      p.type === 'braziers'
+        ? `<details class="puzzle-hint"><summary>Stuck? Show which braziers to touch from here</summary><p>${this.brazierSolution()}</p></details>`
+        : '';
+    return `<div class="puzzle-tools"><button data-action="restart-puzzle">${reset}</button>${hint}</div>`;
+  }
+  /** Touching a brazier twice cancels out and order never matters, so try every set of touches. */
+  private brazierSolution() {
+    const s = this.state;
+    if (s.phase !== 'floor' || s.floor.puzzle.type !== 'braziers') return '';
+    const p = s.floor.puzzle,
+      def = getFloor(s.floor.id),
+      n = p.lit.length;
+    let best: number[] | undefined;
+    for (let mask = 0; mask < 1 << n; mask++) {
+      const lit = [...p.lit];
+      const touches = [...Array(n).keys()].filter((i) => mask & (1 << i));
+      for (const i of touches) for (const j of [i, ...p.neighbors[i]]) lit[j] = !lit[j];
+      if (lit.every(Boolean) && (!best || touches.length < best.length)) best = touches;
+    }
+    if (!best) return 'These flames cannot all be lit from here. Put them out and start over.';
+    return `Touch each of these once, in any order: <strong>${best.map((i) => def.puzzleLabels[i]).join(', ')}</strong>.`;
+  }
   private openJournal() {
     const s = this.state;
     if (s.phase !== 'floor' && s.phase !== 'combat') return;
     const def = getFloor(s.floor.id);
     this.openModal(
-      `<span class="eyebrow">Floor ${def.id} · Field notes</span><h2>${def.title}</h2><p>${this.puzzleDescription()}</p><div class="notice">${s.floor.clueRead ? def.hint : 'A rune tablet is marked by a pale blue stone on your map. Walk up to it and interact to read the clue.'}</div><p class="muted" style="margin-top:18px">${s.floor.puzzle.type === 'levers' ? `Lever order entered: ${s.floor.puzzle.progress} / ${s.floor.puzzle.sequence.length}. ` : s.floor.puzzle.type === 'braziers' ? `Lit: ${s.floor.puzzle.lit.filter(Boolean).length} / ${s.floor.puzzle.lit.length}. ` : ''}${def.notes}</p>${s.floor.puzzle.type === 'plates' ? '<button data-action="restart-puzzle">Reset stones (you return to the vault door)</button>' : ''}<div class="divider"></div><p class="muted">Hold Shift or toggle Sneak to reduce detection. Shadow Cloak reduces detection a further 40%. Tap the floor to walk; enemies may interrupt.</p><button class="primary wide" data-action="close">Back to the expedition ${icon('arrow', 15)}</button>`,
+      `<span class="eyebrow">Floor ${def.id} · Field notes</span><h2>${def.title}</h2><p>${this.puzzleDescription()}</p><div class="notice">${s.floor.clueRead ? def.hint : 'A rune tablet is marked by a pale blue stone on your map. Walk up to it and interact to read the clue.'}</div><p class="muted" style="margin-top:18px">${s.floor.puzzle.type === 'levers' ? `Lever order entered: ${s.floor.puzzle.progress} / ${s.floor.puzzle.sequence.length}. ` : s.floor.puzzle.type === 'braziers' ? `Lit: ${s.floor.puzzle.lit.filter(Boolean).length} / ${s.floor.puzzle.lit.length}. ` : ''}${def.notes}</p>${this.puzzleTools()}<div class="divider"></div><p class="muted">Hold Shift or toggle Sneak to reduce detection. Shadow Cloak reduces detection a further 40%. Tap the floor to walk; enemies may interrupt.</p><button class="primary wide" data-action="close">Back to the expedition ${icon('arrow', 15)}</button>`,
     );
   }
   private renderCombat() {
@@ -1086,11 +1123,19 @@ export class Controller {
       case 'journal':
         this.openJournal();
         break;
-      case 'restart-puzzle':
+      case 'restart-puzzle': {
+        const kind = this.state.phase === 'floor' ? this.state.floor.puzzle.type : '';
         this.dispatch({ type: 'puzzle', action: { type: 'restart' } });
         this.closeModal();
-        this.toast('The stones return to their original positions.');
+        this.toast(
+          kind === 'braziers'
+            ? 'Every flame gutters out. The braziers are back where they started.'
+            : kind === 'levers'
+              ? 'The levers all spring back. Start the sequence again.'
+              : 'The stones return to their original positions.',
+        );
         break;
+      }
       case 'sneak':
         this.sneak = !this.sneak;
         el.classList.toggle('on', this.sneak);
