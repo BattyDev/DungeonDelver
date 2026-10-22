@@ -4,9 +4,9 @@ import type { CombatState, Fighter, Progress } from '@delver/rules';
 import { ANIMS, F, MIRROR_SRC } from '../paperdoll/model';
 import type { AnimId, LookClass } from '../paperdoll/model';
 import { COMBAT_DIR, characterLook, dollFor } from '../paperdoll/looks';
-import type { Doll } from '../paperdoll/looks';
+import type { FrameSource } from '../paperdoll/looks';
+import { creatureFor, isFlying } from '../paperdoll/creatures';
 import { lookById } from '../scene/cast';
-import { enemyTexture } from '../scene/sprites';
 import { floorTexture, floorTheme, wallTexture } from '../scene/pixels';
 
 const W = 300,
@@ -53,16 +53,16 @@ interface Actor {
   enemy: boolean;
   x: number;
   y: number;
-  doll?: Doll;
+  doll?: FrameSource;
   cls?: LookClass;
-  image?: HTMLCanvasElement;
+  creature?: string;
   scale: number;
+  height: number;
   anim: AnimId;
   clock: number;
   hold: boolean;
   delay?: { anim: AnimId; at: number; hold: boolean };
   lunge: number;
-  flash: number;
   dead: boolean;
 }
 interface Float {
@@ -116,7 +116,7 @@ export class CombatStage {
     });
     enemies.forEach((f, i) => {
       const type = Object.keys(ENEMIES).find((t) => ENEMIES[t].name === f.name) ?? 'cultist';
-      this.add(f, ENEMY_SPOTS[i % 4], { image: this.enemyImage(type), scale: f.boss ? 1.35 : 1 });
+      this.add(f, ENEMY_SPOTS[i % 4], { doll: creatureFor(type), creature: type, scale: 1 });
     });
     this.activeId = activeFighter(combat).id;
     this.canvas.addEventListener('pointerup', (e) => this.click(e));
@@ -129,26 +129,20 @@ export class CombatStage {
       x,
       y,
       scale: 1,
+      height: 54,
       anim: dead ? 'death' : 'idle',
       clock: dead ? 99 : Math.random() * 3,
       hold: dead,
       lunge: 0,
-      flash: 0,
       dead,
       ...extra,
     });
-  }
-  private enemyImage(type: string) {
-    const source = enemyTexture(type).image as HTMLCanvasElement;
-    const c = document.createElement('canvas');
-    c.width = 44;
-    c.height = 60;
-    const ctx = c.getContext('2d')!;
-    ctx.drawImage(source, 0, 0, 44, 60);
-    const img = ctx.getImageData(0, 0, 44, 60);
-    for (let i = 3; i < img.data.length; i += 4) img.data[i] = img.data[i] > 110 ? 255 : 0;
-    ctx.putImageData(img, 0, 0);
-    return c;
+    const actor = this.actors.get(f.id)!;
+    const idle = actor.doll?.frameNow('idle', actor.enemy ? 2 : COMBAT_DIR, 0);
+    if (idle) {
+      const top = idle.findIndex((v, i) => i % 4 === 3 && v > 0);
+      actor.height = top < 0 ? 54 : 62 - Math.floor(top / (F * 4));
+    }
   }
   private paintBackdrop(floorId: number) {
     const theme = floorTheme(floorId);
@@ -224,7 +218,7 @@ export class CombatStage {
   private float(a: Actor, text: string, color: string) {
     this.floats.push({
       x: a.x + (Math.random() * 10 - 5),
-      y: a.y - 58 * a.scale,
+      y: a.y - a.height - 4,
       text,
       color,
       t: -HIT_DELAY,
@@ -239,17 +233,17 @@ export class CombatStage {
     for (const a of list) {
       if (a.delay && this.time >= a.delay.at) {
         a.dead = a.delay.hold;
-        if (a.enemy) a.flash = 0.35;
-        else this.play(a, a.delay.anim, a.delay.hold);
+        this.play(a, a.delay.anim, a.delay.hold);
         a.delay = undefined;
       }
       a.lunge = Math.max(0, a.lunge - dt * 2.4);
-      a.flash = Math.max(0, a.flash - dt);
       const ring = a.id === this.selected ? '#9ee7b3' : a.id === this.activeId ? '#e5ba72' : '';
-      ctx.fillStyle = '#00000055';
-      ctx.beginPath();
-      ctx.ellipse(a.x, a.y, 15 * a.scale, 4 * a.scale, 0, 0, Math.PI * 2);
-      ctx.fill();
+      if (!a.creature || !isFlying(a.creature)) {
+        ctx.fillStyle = '#00000055';
+        ctx.beginPath();
+        ctx.ellipse(a.x, a.y, 12 * a.scale, 3 * a.scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       if (ring) {
         ctx.strokeStyle = ring;
         ctx.lineWidth = 1;
@@ -260,7 +254,6 @@ export class CombatStage {
       // A lunge steps toward the other line and back.
       const step = Math.sin(Math.min(1, 1 - a.lunge) * Math.PI) * 16 * (a.enemy ? -1 : 1);
       if (a.doll) this.drawDoll(a, step, dt);
-      else if (a.image) this.drawEnemy(a, step);
     }
     for (const a of list) this.drawBars(a);
     this.floats = this.floats.filter((f) => f.t < 1.2);
@@ -286,10 +279,11 @@ export class CombatStage {
       ? Math.floor(a.clock) % cur.frames
       : Math.min(cur.frames - 1, Math.floor(a.clock));
     // Combat art is drawn facing the combat camera (east), toward the enemy line.
+    const dir = a.enemy ? 2 : COMBAT_DIR;
     const frame =
-      a.doll!.frame(a.anim, COMBAT_DIR, f) ??
-      a.doll!.frame('idle', COMBAT_DIR, 0) ??
-      a.doll!.frameNow('idle', COMBAT_DIR, 0);
+      a.doll!.frame(a.anim, dir, f) ??
+      a.doll!.frame('idle', dir, 0) ??
+      a.doll!.frameNow('idle', dir, 0);
     this.sprite.getContext('2d')!.putImageData(new ImageData(frame.slice(), F, F), 0, 0);
     this.ctx.drawImage(this.sprite, Math.round(a.x - 32 + step), Math.round(a.y - 62));
   }
@@ -299,7 +293,7 @@ export class CombatStage {
     const ctx = this.ctx,
       w = 26,
       x = Math.round(a.x - w / 2),
-      y = Math.round(a.y - (a.enemy ? 62 * a.scale : 56) - 2);
+      y = Math.round(a.y - a.height - 4);
     ctx.fillStyle = '#0b1416';
     ctx.fillRect(x - 1, y - 1, w + 2, f.stats.mp ? 6 : 4);
     ctx.fillStyle = a.enemy ? '#d9706a' : '#8fd6a8';
@@ -312,26 +306,6 @@ export class CombatStage {
       ctx.fillStyle = f.tauntTurns ? '#e5ba72' : '#9fc3d6';
       ctx.fillRect(x + w + 2, y, 2, 2);
     }
-  }
-  private drawEnemy(a: Actor, step: number) {
-    const img = a.image!,
-      ctx = this.ctx;
-    const w = img.width * a.scale,
-      h = img.height * a.scale;
-    const bob = a.dead ? 0 : Math.round(Math.sin(this.time * 3 + a.x) * 1.5);
-    const shake = a.flash > 0 ? Math.round(Math.sin(this.time * 60) * 2) : 0;
-    ctx.save();
-    if (a.dead) ctx.globalAlpha = 0.25;
-    const x = Math.round(a.x - w / 2 + step + shake),
-      y = Math.round(a.y - h + 4 + bob + (a.dead ? 6 : 0));
-    ctx.drawImage(img, x, y, w, h);
-    if (a.flash > 0) {
-      ctx.globalCompositeOperation = 'source-atop';
-      ctx.globalAlpha = a.flash * 2;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x, y, w, h);
-    }
-    ctx.restore();
   }
   private click(e: PointerEvent) {
     const r = this.canvas.getBoundingClientRect();

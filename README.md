@@ -56,7 +56,7 @@ Characters are 64 × 64 pixel paper dolls: a base body, hair and class gear laye
 - The studio has zoom (+, −, 0, or Ctrl + wheel) with Space-drag panning, a play button (P), onion skins for the previous (red) and next (green) frames, the race's skin and hair plus recent colors beside the palette, a side-by-side preview before Send to game, and a shortcut list on <kbd>?</kbd>. The ghost overlay defaults to an outline.
 - Combat plays the drawn animations: attackers lunge and play attack, slash or heal; targets play hurt or death, with damage numbers.
 
-World tiles, walls and props are also generated pixel art (`scene/pixels.ts`), themed per floor. Enemies are still the earlier vector drawings, pixelated to match.
+World tiles, walls and props are also generated pixel art (`scene/pixels.ts`), themed per floor. Enemies use native 64 × 64 frames (`paperdoll/creatures.ts`) with the characters' rasterizer, skeletons and one-pixel outlines. Exploration, combat and turn-order portraits share this art; enemies turn, idle, react to hits and fall in combat. Grounded characters and enemies have floor shadows; bats and wisps do not. Fallen companions stay visible in a prone pose. Remaining visual work, in priority order, is in [docs/VISUALS-HANDOFF.md](docs/VISUALS-HANDOFF.md); the dev-only sprite contact sheet is at `/DungeonDelver/debug-sheet.html` (`?creatures=&combat=death` shows enemy death strips).
 
 ## Reading characters at a glance
 

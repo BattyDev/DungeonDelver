@@ -16,6 +16,7 @@ Read these files before changing code:
 2. This handoff — especially the owner's later clarifications and deployment path.
 3. `README.md` — commands, mechanics, balance choices, save behavior and deployment notes.
 4. `docs/MVP-STATUS.md` — checklist status and last observed validation.
+5. `docs/VISUALS-HANDOFF.md` — for any art or presentation work: how sprites, tiles and combat are drawn, how to inspect them, and the prioritized list of visuals still to fix.
 
 The owner already approved the architecture and implementation plan. A fresh local session should verify the checkout, run it, publish it, and obtain live feedback.
 

@@ -121,8 +121,8 @@ const POSES: Record<AnimId, Partial<Pose>[]> = {
   shoot: [
     { aL: [60, 20], aR: [50, 60], lL: [10, 4], lR: [-10, 6] },
     { aL: [85, 5], aR: [85, 40], lL: [10, 4], lR: [-10, 6] },
-    { aL: [90, 0], aR: [90, 150], lL: [10, 4], lR: [-10, 6] },
-    { lean: -3, aL: [92, 0], aR: [95, 165], lL: [10, 4], lR: [-10, 6] },
+    { aL: [90, 0], aR: [35, 115], lL: [10, 4], lR: [-10, 6] },
+    { lean: -3, aL: [90, 0], aR: [30, 125], lL: [10, 4], lR: [-10, 6] },
     { lean: -2, aL: [90, 0], aR: [70, 100], lL: [10, 4], lR: [-10, 6] },
     { aL: [50, 20], aR: [30, 40], lL: [8, 4], lR: [-8, 6] },
   ],
@@ -168,8 +168,10 @@ const poseFor = (anim: AnimId, frame: number): Pose => ({
 // projects it with a slightly raised camera, then anchors the feet to the ground row.
 export function skeleton(anim: AnimId, frame: number, dir: number, bkey: string): Skeleton {
   const p = poseFor(anim, frame),
-    b = bodyDef(bkey),
-    k = b.scale;
+    b = bodyDef(bkey);
+  // Reserve headwear room on the tallest bodies, retaining the same foot anchor.
+  if (b.scale > 0.95) b.scale *= 0.94;
+  const k = b.scale;
   const T = 18 * k + p.breath * 0.8,
     UA = 10 * k,
     FA = 9 * k,
@@ -305,28 +307,41 @@ interface CapsuleShape {
   color: ShapeColor;
   d?: number;
 }
-type Shape = CircleShape | CapsuleShape;
+export type Shape = CircleShape | CapsuleShape;
 const isCircle = (s: Shape): s is CircleShape => 'circle' in s;
 
+/** Per-pixel depth toward the camera, and which pixels are the head, from a raster. */
+interface DepthMap {
+  depth: Float32Array;
+  head: Uint8Array;
+}
+/** Parts this much nearer than what they overlap get an outline, so a near arm reads against the torso. */
+const INNER_EDGE = 2.5;
 // Rasterizes capsules, ellipses and dots into a buffer with a 1px outline. Shapes later in the list draw on top.
-function raster(
+export function raster(
   buf: Uint8ClampedArray,
   shapes: Shape[],
   opts: {
     headY?: number;
     dots?: { x: number; y: number; c: RGB }[];
     shadeBottom?: [RGB, RGB];
+    /** Openings (a hood's face) that get no outline ring inside them. */
+    open?: (x: number, y: number) => boolean;
+    innerEdges?: boolean;
   } = {},
+  out?: DepthMap,
 ) {
   const fill = new Uint8Array(F * F),
     col: (RGB | undefined)[] = new Array(F * F),
-    headMask = new Uint8Array(F * F);
+    headMask = new Uint8Array(F * F),
+    depth = new Float32Array(F * F).fill(-Infinity);
   for (let y = 0; y < F; y++)
     for (let x = 0; x < F; x++) {
       const px = x + 0.5,
         py = y + 0.5;
       let c: RGB | null = null,
-        isHead = false;
+        isHead = false,
+        d = 0;
       for (const s of shapes) {
         if (isCircle(s)) {
           const ex = (px - s.circle.x) / (s.rx || 1),
@@ -334,6 +349,7 @@ function raster(
           if (ex * ex + ey * ey <= s.r * s.r && (!s.clip || s.clip(px, py))) {
             c = s.color;
             isHead = !!s.head;
+            d = s.d ?? 0;
           }
           continue;
         }
@@ -350,29 +366,54 @@ function raster(
         if (ddx * ddx + ddy * ddy <= s.r * s.r) {
           c = typeof s.color === 'function' ? s.color(t, py) : s.color;
           isHead = false;
+          d = s.d ?? 0;
         }
       }
       if (c) {
         fill[y * F + x] = 1;
         col[y * F + x] = c;
+        depth[y * F + x] = d;
         if (isHead) headMask[y * F + x] = 1;
       }
     }
   buf.fill(0);
   const outline: RGB = [27, 26, 36];
   const n = (xx: number, yy: number) => xx >= 0 && yy >= 0 && xx < F && yy < F && fill[yy * F + xx];
+  const nearer = (i: number, x: number, y: number) =>
+    [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ].some(([xx, yy]) => n(xx, yy) && depth[yy * F + xx] - depth[i] > INNER_EDGE);
+  const outDepth = out ? out.depth.fill(-Infinity) : undefined;
+  if (out) out.head.fill(0);
   for (let y = 0; y < F; y++)
     for (let x = 0; x < F; x++) {
       const i = y * F + x;
       let c = col[i];
       if (!fill[i]) {
-        if (n(x + 1, y) || n(x - 1, y) || n(x, y + 1) || n(x, y - 1)) c = outline;
-        else continue;
+        if (opts.open?.(x + 0.5, y + 0.5)) continue;
+        if (n(x + 1, y) || n(x - 1, y) || n(x, y + 1) || n(x, y - 1)) {
+          c = outline;
+          // A silhouette outline belongs to the nearest part it borders.
+          if (outDepth)
+            for (const [xx, yy] of [
+              [x + 1, y],
+              [x - 1, y],
+              [x, y + 1],
+              [x, y - 1],
+            ])
+              if (n(xx, yy)) outDepth[i] = Math.max(outDepth[i], depth[yy * F + xx]);
+        } else continue;
       } else if (opts.headY != null && !headMask[i] && y > opts.headY && y > 0 && headMask[i - F])
         c = outline;
+      else if (opts.innerEdges !== false && !headMask[i] && nearer(i, x, y)) c = outline;
       else if (opts.shadeBottom && c === opts.shadeBottom[0] && fill[i - F] && !fill[i + F])
         c = opts.shadeBottom[1];
       if (!c) continue;
+      if (outDepth && fill[i]) outDepth[i] = depth[i];
+      if (out && headMask[i]) out.head[i] = 1;
       buf[i * 4] = c[0];
       buf[i * 4 + 1] = c[1];
       buf[i * 4 + 2] = c[2];
@@ -402,7 +443,7 @@ const R: Record<Part, number> = {
   ear: 1.0,
 };
 // Bald base body in plain underclothes, with eyes (and tusks for orcs) so facing reads at a glance.
-function blockBody(buf: Uint8ClampedArray, sk: Skeleton) {
+function blockBody(buf: Uint8ClampedArray, sk: Skeleton, out?: DepthMap) {
   const b = sk.b,
     bulk = b.bulk * b.scale,
     skin = hexRgb(b.skin[1]),
@@ -441,8 +482,24 @@ function blockBody(buf: Uint8ClampedArray, sk: Skeleton) {
       if (t.d > sk.head.d + HR * 0.3) dots.push({ x: t.x, y: t.y, c: [240, 236, 220] });
     }
   }
-  raster(buf, parts, { headY: sk.head.y, dots });
+  raster(buf, parts, { headY: sk.head.y, dots }, out);
 }
+const bodyCache = new Map<string, DepthMap>();
+/** Where the bare body is and how near each pixel of it is, for one pose. */
+function bodyDepth(sk: Skeleton, key: string): DepthMap {
+  let map = bodyCache.get(key);
+  if (!map) {
+    if (bodyCache.size > 400) bodyCache.clear();
+    map = { depth: new Float32Array(F * F), head: new Uint8Array(F * F) };
+    blockBody(new Uint8ClampedArray(F * F * 4), sk, map);
+    bodyCache.set(key, map);
+  }
+  return map;
+}
+/** Gear sits on the body: anything the body stands in front of is hidden, and outlined where it was cut. */
+const OCCLUDE = 0.6;
+/** Clothing never covers the face; held items may pass in front of it. */
+const BODY_LEVEL: Slot[] = ['chest', 'pants', 'boots', 'gloves', 'back'];
 
 /** Starter shape for one slot and style, fitted to the skeleton, in the chosen color with a shade and an outline. */
 export function blockGear(
@@ -505,29 +562,41 @@ export function blockGear(
   const back = { x: -sk.facing.fx, z: -sk.facing.fz };
   const facingAway = sk.facing.fz < -0.3,
     facingUs = sk.facing.fz > 0.3;
+  const visibleEyes = [-1, 1]
+    .map((side) =>
+      sk.toScreen({
+        x: H.x + side * HR * 0.38,
+        y: H.y - HR * 0.05,
+        z: H.z + HR * 0.9,
+      }),
+    )
+    .filter((e) => e.d > hd.d + HR * 0.3);
+  const eyeOpening = (x: number, y: number) =>
+    visibleEyes.some((e) => Math.floor(x) === Math.floor(e.x) && Math.floor(y) === Math.floor(e.y));
   const torso = seg('torso')!,
     neckL = torso.lb;
   if (slot === 'chest') {
+    // Torso pieces stop short of the neck so the chin (and a beard) stays clear.
     if (style === 'robe') {
-      cap(torso, 1.0);
+      cap(torso, 1.0, 0, 0.9);
       cap(seg('hips'), 1.3);
       cap(seg('shoulders'), 1.0);
       for (const s of ['L', 'R'] as const) {
         cap(seg('thigh', s), 1.6);
         cap(seg('shin', s), 1.9, 0, 0.6);
-        cap(seg('upperArm', s), 0.9);
-        cap(seg('forearm', s), 1.4, 0, 0.55);
+        // Sleeves a shade darker than the body of the robe, so the arms read.
+        cap(seg('upperArm', s), 0.9, 0, 1, shade);
+        cap(seg('forearm', s), 1.4, 0, 0.55, shade);
       }
     } else if (style === 'leather') {
-      cap(torso, 0.5, 0.22, 1);
+      cap(torso, 0.5, 0.22, 0.88);
       cap(seg('shoulders'), 0.5);
-      for (const s of ['L', 'R'] as const) cap(seg('upperArm', s), 0.4, 0, 0.3);
+      for (const s of ['L', 'R'] as const) cap(seg('upperArm', s), 0.4, 0, 0.3, shade);
     } else {
-      cap(torso, 0.9, 0.22, 1);
+      cap(torso, 0.9, 0.22, 0.88);
       cap(seg('shoulders'), 1.0);
-      for (const s of ['L', 'R'] as const) cap(seg('upperArm', s), 0.8, 0, 0.45);
-      if (style === 'lamellar')
-        for (const s of ['L', 'R'] as const) cap(seg('upperArm', s), 1.9, 0.05, 0.6, shade, 0.5);
+      for (const s of ['L', 'R'] as const)
+        cap(seg('upperArm', s), 0.8, 0, 0.4, style === 'lamellar' ? shade : light, 0.2);
     }
   } else if (slot === 'pants') {
     const wide = style === 'hakama';
@@ -560,9 +629,10 @@ export function blockGear(
       const faceClip = (x: number, y: number) => {
         const ox = x - hd.x,
           oy = y - hd.y;
+        // A wide opening: the whole face shows below the brow.
         if (facingAway) return true;
-        if (facingUs) return !(oy > -headR * 0.35 && Math.abs(ox) < headR * 0.72);
-        return !(oy > -headR * 0.35 && ox * sk.facing.fx > -headR * 0.15);
+        if (facingUs) return !(oy > -headR * 0.5 && Math.abs(ox) < headR * 0.82);
+        return !(oy > -headR * 0.5 && ox * sk.facing.fx > -headR * 0.3);
       };
       const drape = { x: hd.x + back.x * headR * 0.3, y: hd.y + headR * 1.4 };
       for (let i = 0; i <= 4; i++) {
@@ -571,33 +641,52 @@ export function blockGear(
           circle: { x: hd.x + (drape.x - hd.x) * t, y: hd.y + (drape.y - hd.y) * t },
           r: headR + 1.2,
           color: shade,
-          d: hd.d - 1,
+          // The drape hangs behind the head, or over the back when walking away.
+          d: facingAway ? hd.d + 0.5 : hd.d - 1,
           clip: faceClip,
         });
       }
       shapes.push({ circle: hd, r: headR + 1.4, color: base, clip: faceClip, d: hd.d + 1 });
     } else if (style === 'wizard') {
-      const brim = { x: hd.x, y: hd.y - headR * 0.35 };
-      shapes.push({ circle: brim, r: headR * 1.65, ry: 0.32, color: shade, d: hd.d + 1 });
-      // Tall bodies would push the tip out of the frame; bend it down to fit.
-      const tip = { x: hd.x + back.x * headR * 0.9, y: Math.max(5.5, hd.y - headR * 2.9) };
-      for (let i = 0; i <= 8; i++) {
-        const t = i / 8,
-          c = { x: brim.x + (tip.x - brim.x) * t, y: brim.y - 1 + (tip.y - brim.y) * t };
-        shapes.push({ circle: c, r: headR * (0.92 - t * 0.78) + 0.4, color: base, d: hd.d + 1.1 });
+      // The brim sits on the brow, above the eyes; the cone never dips below it.
+      const brim = { x: hd.x, y: hd.y - headR * 0.62 };
+      shapes.push({ circle: brim, r: headR * 1.55, ry: 0.24, color: shade, d: hd.d + 1 });
+      // A low crown bends back at its tip. Its height fits the available headroom,
+      // including the outline, instead of flattening a clamped straight cone.
+      const height = Math.min(headR * 1.85, Math.max(1.5, brim.y - 3));
+      const bend = Math.abs(back.x) > 0.2 ? back.x : -0.65;
+      for (let i = 0; i <= 12; i++) {
+        const t = i / 12,
+          c = {
+            x: brim.x + bend * headR * 1.3 * t * t,
+            y: brim.y - height * Math.sin(t * Math.PI * 0.58),
+          };
+        shapes.push({
+          circle: c,
+          r: headR * (0.88 - t * 0.8) + 0.3,
+          ry: Math.min(1, height / (headR * 1.85)),
+          color: base,
+          d: hd.d + 1.1,
+          clip: (_x, y) => y < brim.y + 0.5,
+        });
       }
     } else {
+      // Helms cover the crown and the cheeks, and leave the face open.
+      const browY = hd.y - headR * 0.5;
+      const helmClip = (x: number, y: number) => {
+        if (eyeOpening(x, y)) return false;
+        const ox = x - hd.x,
+          oy = y - hd.y;
+        if (y < browY) return true;
+        if (oy > headR * 0.45 || facingAway) return facingAway && oy < headR * 0.15;
+        if (facingUs) return Math.abs(ox) > headR * 0.62;
+        return ox * sk.facing.fx < -headR * 0.1;
+      };
+      shapes.push({ circle: hd, r: headR + 1.2, color: base, clip: helmClip, d: hd.d + 1 });
       shapes.push({
-        circle: hd,
-        r: headR + 1.2,
-        color: base,
-        clip: (_x, y) => y < hd.y + headR * 0.15,
-        d: hd.d + 1,
-      });
-      shapes.push({
-        a: { x: hd.x - headR - 1.2, y: hd.y + headR * 0.12 },
-        b: { x: hd.x + headR + 1.2, y: hd.y + headR * 0.12 },
-        r: 1.1,
+        a: { x: hd.x - headR - 1.2, y: browY - 0.5 },
+        b: { x: hd.x + headR + 1.2, y: browY - 0.5 },
+        r: 0.7,
         color: shade,
         d: hd.d + 1.1,
       });
@@ -615,7 +704,17 @@ export function blockGear(
               y: H.y - HR * 1.7,
               z: H.z + HR * 0.7,
             });
-            shapes.push({ a: root, b: t, r: 0.8, color: gold, d: hd.d + 2 });
+            const room = Math.min(1, Math.max(0, root.y - 2.5) / Math.max(0.1, root.y - t.y));
+            shapes.push({
+              a: root,
+              b: {
+                x: root.x + (t.x - root.x) * room,
+                y: root.y + (t.y - root.y) * room,
+              },
+              r: 0.8,
+              color: gold,
+              d: hd.d + 2,
+            });
           }
         }
       }
@@ -717,7 +816,19 @@ export function blockGear(
         const top = { x: hand.x + u.x * 3, y: hand.y - 16 * k },
           bottom = { x: hand.x - u.x * 1.5, y: hand.y + 11 * k };
         shapes.push({ a: bottom, b: top, r: 1.0, color: base });
-        shapes.push({ circle: top, r: 2.2 * kk, color: gem });
+        // The gem flares at the height of a heal or while channelling.
+        const flare = (anim === 'heal' && frame === 2) || anim === 'channel';
+        if (flare) shapes.push({ circle: top, r: 3.6 * kk, color: [158, 231, 179] });
+        shapes.push({ circle: top, r: 2.2 * kk, color: flare ? [236, 255, 240] : gem });
+        // A bolt leaves the hands while casting.
+        const off = seg('forearm', 'L');
+        if (anim === 'cast' && (frame === 2 || frame === 3) && off) {
+          const mid = { x: (hand.x + off.b.x) / 2, y: (hand.y + off.b.y) / 2 };
+          const ahead = Math.abs(sk.facing.fx) > 0.2 ? Math.sign(sk.facing.fx) : 0;
+          const bolt = { x: mid.x + ahead * (frame === 3 ? 7 : 3), y: mid.y };
+          shapes.push({ circle: bolt, r: 2.8 * kk, color: [124, 196, 255], d: fa.d + 2 });
+          shapes.push({ circle: bolt, r: 1.3 * kk, color: [236, 246, 255], d: fa.d + 2.1 });
+        }
       } else if (style === 'katana') {
         shapes.push({ a: P(hand, u, -4), b: hand, r: 0.95, color: dark });
         shapes.push({ circle: P(hand, u, 1), r: 1.5, color: gold });
@@ -726,8 +837,9 @@ export function blockGear(
         // Held in the left hand. Hanging at the side it stands upright; raised, it turns across the arm.
         const hanging = u.y > 0.6,
           fsx = Math.abs(sk.facing.fx) > 0.2 ? Math.sign(sk.facing.fx) : 1;
-        const axis = hanging ? { x: 0, y: 1 } : perp,
-          tipDir = hanging ? { x: -fsx, y: 0 } : { x: -u.x, y: -u.y };
+        const aiming = anim === 'shoot' && frame >= 1 && frame <= 4;
+        const axis = hanging || aiming ? { x: 0, y: 1 } : perp,
+          tipDir = hanging || aiming ? { x: -fsx, y: 0 } : { x: -u.x, y: -u.y };
         const len = 11 * k,
           pts: Pt[] = [];
         // The grip sits in the hand; the limbs curve back toward the archer.
@@ -740,8 +852,41 @@ export function blockGear(
         }
         for (let i = 0; i < pts.length - 1; i++)
           shapes.push({ a: pts[i], b: pts[i + 1], r: 1.0, color: base });
-        shapes.unshift({ a: pts[0], b: pts[pts.length - 1], r: 0.55, color: steel });
+        // While drawing, the string comes back to the drawing hand with an arrow nocked.
+        const draw = seg('forearm', 'R');
+        const drawing = anim === 'shoot' && frame >= 1 && frame <= 3 && draw;
+        // Ordering shapes inside the weapon layer cannot put the string behind
+        // an arm in the body layer. Give it its own depth so body occlusion can.
+        const stringDepth = (drawing ? Math.min(fa.d, draw.d) : fa.d) - 1;
+        if (drawing) {
+          const nock = { x: draw.b.x, y: hand.y };
+          shapes.unshift({ a: pts[0], b: nock, r: 0.45, color: steel, d: stringDepth });
+          shapes.unshift({
+            a: nock,
+            b: pts[pts.length - 1],
+            r: 0.45,
+            color: steel,
+            d: stringDepth,
+          });
+          const tip = { x: hand.x + fsx * 6 * k, y: hand.y };
+          shapes.push({ a: nock, b: tip, r: 0.45, color: [214, 196, 160] });
+          for (const sy of [-1, 1])
+            shapes.push({
+              a: tip,
+              b: { x: tip.x - fsx * 2, y: tip.y + sy * 1.5 },
+              r: 0.5,
+              color: steel,
+            });
+        } else
+          shapes.unshift({
+            a: pts[0],
+            b: pts[pts.length - 1],
+            r: 0.55,
+            color: steel,
+            d: stringDepth,
+          });
       }
+      for (const sh of shapes) sh.d ??= fa.d + 0.4;
     }
   } else if (slot === 'offhand') {
     const fa = seg('forearm', 'L');
@@ -772,10 +917,46 @@ export function blockGear(
         shapes.push({ circle: c, r: 6.5 * kk, color: base, rx });
         shapes.push({ circle: c, r: 1.6 * kk, color: light });
       }
+      for (const sh of shapes) sh.d ??= fa.d + 0.6;
     }
   }
   shapes.sort((s1, s2) => (s1.d || 0) - (s2.d || 0));
-  raster(buf, shapes, { shadeBottom: [base, shade] });
+  const gear: DepthMap = { depth: new Float32Array(F * F), head: new Uint8Array(F * F) };
+  // Headwear frames the face rather than outlining a hole in front of it.
+  const open =
+    slot === 'helmet' && style !== 'wizard'
+      ? (x: number, y: number) => eyeOpening(x, y) || Math.hypot(x - hd.x, y - hd.y) < headR - 0.3
+      : undefined;
+  raster(
+    buf,
+    shapes,
+    { shadeBottom: [base, shade], open, innerEdges: !(slot === 'chest' && style === 'robe') },
+    gear,
+  );
+  // Hide what the body stands in front of (and anything over the face for torso gear), then
+  // outline the cut so the edge stays crisp.
+  const body = bodyDepth(sk, `${anim}|${frame}|${dir}|${bkey}`),
+    level = BODY_LEVEL.includes(slot),
+    cut = new Uint8Array(F * F);
+  for (let i = 0; i < F * F; i++) {
+    if (!buf[i * 4 + 3] || body.depth[i] === -Infinity) continue;
+    if (body.depth[i] > gear.depth[i] + OCCLUDE || (level && body.head[i])) {
+      buf[i * 4 + 3] = 0;
+      cut[i] = 1;
+    }
+  }
+  for (let y = 0; y < F; y++)
+    for (let x = 0; x < F; x++) {
+      const i = y * F + x;
+      if (!buf[i * 4 + 3]) continue;
+      const touches = [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ].some(([xx, yy]) => xx >= 0 && yy >= 0 && xx < F && yy < F && cut[yy * F + xx]);
+      if (touches) buf.set([27, 26, 36], i * 4);
+    }
 }
 
 export const frameCount = (anim: AnimId) => ANIMS[anim].frames;

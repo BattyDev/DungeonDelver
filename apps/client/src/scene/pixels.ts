@@ -652,21 +652,3 @@ export function leverTexture(name: string, on: boolean, themeId: ThemeId) {
     return p.done();
   });
 }
-/** Pixelates a smooth canvas (the enemy drawings) so it sits with the pixel art. */
-export function pixelate(source: HTMLCanvasElement, width: number): THREE.CanvasTexture {
-  const key = `pixelate-${width}-${source.width}x${source.height}-${source.dataset.key ?? ''}`;
-  return texture(key, () => {
-    const h = Math.round((source.height / source.width) * width);
-    const c = document.createElement('canvas');
-    c.width = width;
-    c.height = h;
-    const ctx = c.getContext('2d')!;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(source, 0, 0, width, h);
-    // Snap alpha so edges stay crisp.
-    const img = ctx.getImageData(0, 0, width, h);
-    for (let i = 3; i < img.data.length; i += 4) img.data[i] = img.data[i] > 110 ? 255 : 0;
-    ctx.putImageData(img, 0, 0);
-    return c;
-  });
-}

@@ -67,9 +67,20 @@ export function lookLayers(look: Look): LayerSpec[] {
     { slot: 'base', style: 'body', color: '#000000', behind: [] },
     { slot: 'hair', style: look.hair, color: look.hairColor, behind: [] },
   ];
-  if (look.beard) layers.push({ slot: 'beard', style: 'full', color: look.hairColor, behind: [] });
   for (const [slot, style, color, behind, hidden] of PRESETS[look.cls].gear)
     if (!hidden) layers.push({ slot, style, color, behind: behind ?? [] });
+  // A beard lies over the chest piece but under anything held.
+  if (look.beard) {
+    const held = layers.findIndex(
+      (l) => l.slot === 'weapon' || l.slot === 'offhand' || l.slot === 'back',
+    );
+    layers.splice(held < 0 ? layers.length : held, 0, {
+      slot: 'beard',
+      style: 'full',
+      color: look.hairColor,
+      behind: [],
+    });
+  }
   return layers;
 }
 export const lookAnims = (look: Look): AnimId[] => LOOK_CLASSES[look.cls].anims;

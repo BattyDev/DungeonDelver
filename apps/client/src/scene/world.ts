@@ -72,7 +72,7 @@ export class World {
   private followers = new Map<string, DollSprite>();
   private trail: Point[] = [];
   private walkers: Walker[] = [];
-  private enemies = new Map<string, Billboard>();
+  private enemies = new Map<string, DollSprite>();
   private rings = new Map<string, THREE.Mesh>();
   private enemyLabels = new Map<string, HTMLDivElement>();
   private threatMarkers = new Map<string, THREE.Mesh>();
@@ -173,6 +173,7 @@ export class World {
     }
     this.player?.dispose();
     this.followers.forEach((f) => f.dispose());
+    this.enemies.forEach((f) => f.dispose());
     this.walkers.forEach((w) => {
       w.doll.dispose();
       w.label?.remove();
@@ -225,6 +226,7 @@ export class World {
         if (!w.ghost || !w.label) return;
         const hired = s.progress.hires.some((h) => h.id === w.ghost!.id);
         w.doll.sprite.visible = !hired;
+        w.doll.shadow.visible = !hired;
         w.label.hidden = hired;
         if (w.marker) w.marker.visible = !hired;
         const detail = w.label.querySelector('small');
@@ -263,16 +265,17 @@ export class World {
     }
     for (const m of members) {
       const doll = this.followers.get(m.id);
-      if (doll) doll.sprite.visible = m.alive;
+      if (doll) doll.setAlive(m.alive);
     }
   }
   private syncFloor(s: Extract<GameState, { phase: 'floor' | 'combat' }>) {
     const def = getFloor(s.floor.id);
     for (const p of s.floor.patrols) {
-      const actor = this.enemies.get(p.id);
+      const actor = this.enemies.get(p.id)?.sprite;
       if (!actor) continue;
       actor.visible = !p.defeated;
-      actor.position.set(p.position.x, 0, p.position.z);
+      if (!actor.userData.patrolTarget) actor.position.set(p.position.x, 0, p.position.z);
+      actor.userData.patrolTarget = { ...p.position };
       const label = this.enemyLabels.get(p.id);
       if (label) label.hidden = p.defeated;
       const marker = this.threatMarkers.get(p.id);
@@ -406,10 +409,10 @@ export class World {
       ]);
       def.patrols.forEach((p) => {
         const enemyDef = ENEMIES[p.enemyTypes[0]];
-        const sprite = makeEnemySprite(p.enemyTypes[0]);
-        if (p.boss) sprite.scale.multiplyScalar(1.5);
+        const enemy = makeEnemySprite(p.enemyTypes[0]);
+        const sprite = enemy.sprite;
         this.actors.add(sprite);
-        this.enemies.set(p.id, sprite);
+        this.enemies.set(p.id, enemy);
         sprite.userData.labelOffset =
           p.enemyTypes[0] === 'slime' ? 0.7 : p.enemyTypes[0] === 'bat' ? 1.5 : 1.75;
         const marker = this.affiliationMarker('#ef8877', 3);
@@ -748,6 +751,18 @@ export class World {
       });
     }
     this.stepWalkers(delta);
+    this.enemies.forEach((enemy) => {
+      // Patrol state advances at 10 Hz. Smooth between its positions so the doll
+      // sees continuous velocity and does not restart idle/walk on every tick.
+      const target = enemy.sprite.userData.patrolTarget as Point | undefined;
+      if (target) {
+        const p = enemy.sprite.position,
+          k = 1 - Math.exp(-14 * delta);
+        p.x += (target.x - p.x) * k;
+        p.z += (target.z - p.z) * k;
+      }
+      enemy.update(delta);
+    });
     // Frame the whole party: aim a little behind the leader and pull back as the line stretches.
     const lead = this.player?.sprite.position ?? new THREE.Vector3(this.target.x, 0, this.target.z);
     let spread = 0;
@@ -795,7 +810,7 @@ export class World {
       if (!sign.el.hidden) this.placeLabel(sign.el, sign.at.clone(), false);
     }
     for (const [id, label] of this.enemyLabels) {
-      const sprite = this.enemies.get(id)!;
+      const sprite = this.enemies.get(id)!.sprite;
       // Only nearby patrols are named, so a big floor isn't covered in tags.
       label.classList.toggle(
         'far',
@@ -806,7 +821,7 @@ export class World {
         label,
         new THREE.Vector3(
           sprite.position.x,
-          Number(sprite.userData.labelOffset) * (sprite.scale.y / 1.72),
+          Number(sprite.userData.labelOffset),
           sprite.position.z,
         ),
         true,

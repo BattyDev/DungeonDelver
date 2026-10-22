@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { billboard } from './billboard';
 import type { Billboard } from './billboard';
-import { ANIMS, F, dirIndex } from '../paperdoll/model';
+import { ANIMS, F, RACES, dirIndex } from '../paperdoll/model';
 import type { AnimId } from '../paperdoll/model';
 import { dollFor } from '../paperdoll/looks';
 import type { FrameSource, Look } from '../paperdoll/looks';
+import { contactShadow } from './contact-shadow';
 
 /** World height of one 64 px frame. A human stands about 1.5 units tall inside it. */
 export const DOLL_SIZE = 1.85;
@@ -15,6 +16,8 @@ export const DOLL_SIZE = 1.85;
  */
 export class DollSprite {
   readonly sprite: Billboard;
+  readonly shadow: ReturnType<typeof contactShadow>;
+  private alive = true;
   private canvas = document.createElement('canvas');
   private ctx: CanvasRenderingContext2D;
   private texture: THREE.CanvasTexture;
@@ -25,7 +28,7 @@ export class DollSprite {
   private once?: { anim: AnimId; hold: boolean; done?: () => void };
   private shown = '';
   private last?: THREE.Vector3;
-  constructor(look: Look | FrameSource, size = DOLL_SIZE) {
+  constructor(look: Look | FrameSource, size = DOLL_SIZE, grounded = true) {
     this.canvas.width = this.canvas.height = F;
     this.ctx = this.canvas.getContext('2d')!;
     this.texture = new THREE.CanvasTexture(this.canvas);
@@ -35,6 +38,10 @@ export class DollSprite {
     this.texture.generateMipmaps = false;
     // Feet sit on row 62.5 of the frame: anchor there so position.y is the ground.
     this.sprite = billboard(this.texture, size, size, 1.5 / F);
+    this.shadow = contactShadow();
+    this.shadow.visible = grounded;
+    this.shadow.userData.grounded = grounded;
+    this.fitShadow(look, size);
     this.doll = 'race' in look ? dollFor(look) : look;
     this.doll.warm();
     this.draw();
@@ -43,6 +50,26 @@ export class DollSprite {
     this.doll = 'race' in look ? dollFor(look) : look;
     this.doll.warm();
     this.shown = '';
+    this.fitShadow(look, this.sprite.scale.x);
+  }
+  private fitShadow(look: Look | FrameSource, size: number) {
+    const body = 'race' in look ? RACES[look.race].scale * Math.sqrt(RACES[look.race].bulk) : 1;
+    const width = ((0.3 + 0.42 * body) * size) / DOLL_SIZE;
+    this.shadow.scale.set(width, 1, width * 0.65);
+  }
+  /** Fallen companions remain in the party as a held, prone frame. */
+  setAlive(alive: boolean) {
+    if (this.alive === alive) return;
+    this.alive = alive;
+    if (!alive) {
+      this.play('death', this.dir, true);
+      this.clock = ANIMS.death.frames - 1;
+    } else {
+      this.once = undefined;
+      this.anim = 'idle';
+      this.clock = 0;
+    }
+    this.draw();
   }
   face(dir: number) {
     this.dir = dir;
@@ -60,6 +87,11 @@ export class DollSprite {
   /** Advances the animation from the sprite's movement since the last update. */
   update(dt: number) {
     const pos = this.sprite.position;
+    // Keep shadows horizontal and unscaled by the upright sprite's geometry.
+    if (this.sprite.parent && this.shadow.parent !== this.sprite.parent)
+      this.sprite.parent.add(this.shadow);
+    this.shadow.visible = this.sprite.visible && !!this.shadow.userData.grounded;
+    this.shadow.position.set(pos.x, 0.01, pos.z);
     let speed = 0;
     if (this.last && dt > 0) {
       const vx = (pos.x - this.last.x) / dt,
@@ -95,7 +127,10 @@ export class DollSprite {
     const f = def.loop
       ? Math.floor(this.clock) % def.frames
       : Math.min(def.frames - 1, Math.floor(this.clock));
-    let frame = this.doll.frame(this.anim, this.dir, f),
+    // A held death must never fall back to a standing frame while its direction is queued.
+    let frame = this.once?.hold
+        ? this.doll.frameNow(this.anim, this.dir, f)
+        : this.doll.frame(this.anim, this.dir, f),
       key = `${this.anim}|${this.dir}|${f}|${this.doll.version}`;
     // While a direction is still being drawn, stand facing the camera.
     if (!frame) {
@@ -108,6 +143,9 @@ export class DollSprite {
     this.texture.needsUpdate = true;
   }
   dispose() {
+    this.shadow.removeFromParent();
+    this.shadow.geometry.dispose();
+    this.shadow.material.dispose();
     this.texture.dispose();
     this.sprite.material.dispose();
     this.sprite.geometry.dispose();
